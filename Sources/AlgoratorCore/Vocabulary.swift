@@ -385,3 +385,21 @@ extension Document {
     public func script(id: String) -> Script? { scripts.first { $0.id == id } }
     public func script(named name: String) -> Script? { scripts.first { $0.name == name } }
 }
+
+extension Script {
+    /// The script's variables in order of first appearance: parameters, then output bindings and `set` targets.
+    public var variableNames: [String] {
+        var names = parameters.map(\.name)
+        func visit(_ blocks: [Block]) {
+            for block in blocks {
+                // Outputs in a stable order (the dictionary has none).
+                names += block.bindings.sorted { $0.key < $1.key }.map(\.value)
+                if let name = BuiltIn.setTarget(of: block) { names.append(name) }
+                for region in block.regions.keys.sorted() { visit(block.regions[region] ?? []) }
+            }
+        }
+        visit(body)
+        var seen = Set<String>()
+        return names.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+}

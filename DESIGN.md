@@ -53,6 +53,24 @@ Places where the spec was ambiguous, and what was chosen.
 | 36 | Empty slots | A slot with a default evaluates to it and is not "empty" for validation; a boolean slot without a predicate is false at run time and an error in validation. An empty text literal is a value, not a missing input. | So freshly dragged blocks validate. |
 | 37 | Host-defined C-blocks and caps | A host cap ends the script (as `returned`, no outputs). A host C-block runs its handler and its regions are ignored. | Loops are out of scope; this is where `for each` will hook in (§14). |
 
+### M2 — layout, rendering, static editor
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 38 | How layout measures text without SwiftUI | `LayoutMetrics` carries a `measure(text, role)` closure. `.standard` measures with the system font through AppKit; `.fixed()` makes every character 7×14 for tests. | Layout stays a pure function, and its tests compare against hand-computed frames. |
+| 39 | Layout algorithm | Each block is laid out at the origin (rows of pieces, then regions) and translated into place by its parent. Frames in the `LayoutTree` are absolute canvas coordinates. | Simplest correct thing; the tree is small, so repeated translation costs nothing noticeable. |
+| 40 | A C-block's `frame` | Covers its own bars only. Children wider than the block stick out (as in Scratch); `bounds` includes them and the canvas grows to fit. | A parent that widened with its children would make every drop reflow the whole stack. |
+| 41 | Shape of a misplaced block | Decided by position: anything in a stack is drawn as a statement, anything in a slot as a reporter. | A hand-edited or broken document must still show every block. |
+| 42 | Unknown kinds | Grey, dashed red outline, label `unknown: <kind>`, error badge. Their regions are still drawn (sorted by name); their inputs are not. | "Visibly broken, never dropped." |
+| 43 | Output bindings | A `→` and one menu-style chip per output. One output shares the title row; several get a second row. The chip reads `title` when bound to a variable of the same name, `opened → since` when renamed, `priority → …` when unbound. | Four chips on the title row made `fetch ticket` far too wide. |
+| 44 | Fresh blocks | `BlockFactory.make` fills typeable slots with their default literals and binds every output to a variable of its own name. | A dropped `fetch ticket` is immediately useful and validates. |
+| 45 | `call script` in the palette | One prototype per script of the document, already pointing at it. | Like Scratch's "My Blocks": no picker step after the drop. |
+| 46 | Entry block | A hat showing the script name, parameters as variable chips, then `→` and the declared outputs. | Spec §4.1. |
+| 47 | Literal styles | Typeable literals (text, number, date, time, timestamp) are white pills; picked ones (dropdown, reference, variable name, script, bool) are darker pills with a ▾. Long text is truncated at 32 characters. | Mirrors Scratch's fields vs. menus. |
+| 48 | Geometry | Straight-sided notches (Scratch 2 style), 4 pt corners, 14 pt arm, hexagon tips capped at 12 pt. More compact than Scratch 3. | Reads well at 12 pt system font; all of it lives in `LayoutMetrics`. |
+| 49 | Dark mode | Blocks keep their colours; only the canvas background follows the system. | As in Scratch; block colours carry meaning. |
+| 50 | Snapshots | `SnapshotTests` render through `ImageRenderer` into `Snapshots/` (committed), using the same `BlockRenderer` as the on-screen `Canvas`. | The pictures can be reviewed without running anything. |
+
 ## Known limitations
 
 - `LocalTime` has whole-second precision; a timestamp's fraction is dropped when taking its time of day.
