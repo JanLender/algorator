@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "scripts": [
+    {
+      "id": "escalate-ticket",
+      "name": "Escalate ticket",
+      "parameters": [ { "name": "ticket", "type": "reference", "referenceKind": "ticket" } ],
+      "outputs": [ { "name": "escalated", "type": "bool" } ],
+      "body": [
+        {
+          "id": "fetch",
+          "kind": "ticket.fetch",
+          "inputs": { "ticket": { "variable": "ticket" } },
+          "bindings": { "title": "title", "priority": "priority", "assignee": "assignee", "opened": "opened" }
+        },
+        {
+          "id": "decide",
+          "kind": "control.ifElse",
+          "inputs": {
+            "condition": { "reporter": {
+              "id": "high-or-old",
+              "kind": "operator.or",
+              "inputs": {
+                "a": { "reporter": {
+                  "id": "is-high",
+                  "kind": "operator.equals",
+                  "inputs": { "a": { "variable": "priority" }, "b": { "literal": { "text": "high" } } }
+                } },
+                "b": { "reporter": {
+                  "id": "is-old",
+                  "kind": "operator.less",
+                  "inputs": {
+                    "a": { "reporter": {
+                      "id": "opened-plus-2-days",
+                      "kind": "time.addDays",
+                      "inputs": { "amount": { "literal": { "number": 2 } }, "to": { "variable": "opened" } }
+                    } },
+                    "b": { "reporter": { "id": "now", "kind": "time.now" } }
+                  }
+                } }
+              }
+            } }
+          },
+          "regions": {
+            "then": [
+              {
+                "id": "notify-assignee",
+                "kind": "ticket.notify",
+                "inputs": {
+                  "user": { "variable": "assignee" },
+                  "message": { "reporter": {
+                    "id": "message",
+                    "kind": "operator.join",
+                    "inputs": { "a": { "literal": { "text": "Escalated: " } }, "b": { "variable": "title" } }
+                  } }
+                }
+              },
+              {
+                "id": "label",
+                "kind": "ticket.addLabel",
+                "inputs": { "label": { "literal": { "text": "escalated" } }, "ticket": { "variable": "ticket" } }
+              },
+              { "id": "return-true", "kind": "control.return", "inputs": { "escalated": { "literal": { "bool": true } } } }
+            ],
+            "else": [
+              { "id": "return-false", "kind": "control.return", "inputs": { "escalated": { "literal": { "bool": false } } } }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "escalate-all-clear",
+      "name": "Escalate all-clear",
+      "parameters": [ { "name": "ticket", "type": "reference", "referenceKind": "ticket" } ],
+      "body": [
+        {
+          "id": "call-escalate",
+          "kind": "control.call",
+          "inputs": {
+            "script": { "literal": { "text": "escalate-ticket" } },
+            "arg.ticket": { "variable": "ticket" }
+          },
+          "bindings": { "escalated": "escalated" }
+        },
+        {
+          "id": "branch",
+          "kind": "control.ifElse",
+          "inputs": {
+            "condition": { "reporter": {
+              "id": "was-escalated",
+              "kind": "operator.equals",
+              "inputs": { "a": { "variable": "escalated" }, "b": { "literal": { "text": "true" } } }
+            } }
+          },
+          "regions": {
+            "then": [
+              {
+                "id": "tell-ops",
+                "kind": "ticket.notify",
+                "inputs": {
+                  "user": { "literal": { "reference": { "kind": "user", "id": "ops" } } },
+                  "message": { "literal": { "text": "A ticket was escalated" } }
+                }
+              }
+            ],
+            "else": [
+              {
+                "id": "all-clear",
+                "kind": "ticket.notify",
+                "inputs": {
+                  "user": { "literal": { "reference": { "kind": "user", "id": "ops" } } },
+                  "message": { "literal": { "text": "All clear" } }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

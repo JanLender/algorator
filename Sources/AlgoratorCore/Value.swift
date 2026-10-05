@@ -17,7 +17,7 @@ public struct Reference: Hashable, Codable, Sendable {
 }
 
 /// A runtime value. Values are dynamically typed and coerced by context (see `Coercion`).
-public enum Value: Equatable, Sendable {
+public enum Value: Hashable, Sendable {
     case text(String)
     case number(Double)
     case bool(Bool)

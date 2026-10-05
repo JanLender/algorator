@@ -25,6 +25,34 @@ Places where the spec was ambiguous, and what was chosen.
 | 13 | `schemaVersion` | A newer version than this build knows is rejected (`DocumentError.unsupportedSchemaVersion`); older ones would be migrated in `Document.init(from:)`. | Spec §6. |
 | 14 | Unknown block kinds | `Block` carries no knowledge of the vocabulary, so any kind round-trips untouched. Unknown *JSON fields* are not preserved. | Simplest thing that satisfies §6. |
 
+### M1 — vocabulary, built-ins, interpreter, validation
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 15 | Spec §5.3 says value slots accept "any non-predicate reporter" | Value slots **also accept predicates**, as in Scratch. Boolean slots stay strict (predicates only — no variables, no literals). | Otherwise a computed condition could never be stored in a variable or returned. The price: branching on a boolean variable is `if (escalated = true)`, which is what the second acceptance script does. |
+| 16 | Where the toy vocabulary lives | A fourth, non-product target `TicketDemo` (fake directory, four ticket blocks, `acceptance.json`), used by the demo executable and by the tests. | Tests cannot cleanly import an executable target; products are still exactly the two libraries. |
+| 17 | `Category` in spec §7 | Named `BlockCategory`; colour is a UI-free `BlockColor` (sRGB). | A public `Category` would collide with the Objective-C runtime's `Category` in consumers. |
+| 18 | Handler signature for reporters | One stored signature (`(BlockInputs, RunContext) throws -> [String: Value]`, as in the spec); reporters put their value under `"result"`. Factories `.statement` / `.reporter` / `.predicate` hide this. | One closure type keeps the definition a plain struct. |
+| 19 | Are definitions `Sendable`? | No. `Vocabulary` and `BlockDefinition` are not `Sendable`, and handlers are not `@Sendable`. Document types are. | Host handlers touch the host's own (often main-actor) objects; the engine is synchronous and never hops threads. |
+| 20 | Slot coercion "per §5.2" | Inputs reach the handler raw; the typed accessors on `BlockInputs` (`text`, `number`, `bool`, `date`, `reference`, …) coerce. | The handler knows what it needs; nothing is lost by an early cast (a date slot would otherwise turn unparsable text into empty before the handler could see it). |
+| 21 | Dynamic slots of `return` and `call script` | `Vocabulary.signature(of:in:document:)` resolves a block's actual title, slots and outputs. `return` gets one slot per declared output (keyed by its name); `call script` has a `script` slot (the callee's id) plus `arg.<parameter>` slots, and the callee's outputs. | One function shared by the interpreter, validation and (later) layout, so they cannot disagree. Titles are `[TitlePart]`, not strings, because parameter names may contain spaces. |
+| 22 | `set variable` | The variable name is a text literal in a slot whose editor is `.variable`. | Fits the model without a new `Input` case. |
+| 23 | What is traced | One step per executed **statement** (C-blocks and calls included, recorded before their children). Reporters are part of their statement; a throwing reporter fails that statement. Labels are the title with evaluated inputs, e.g. `fetch ticket T-1`. | "One per executed block" taken as stack blocks; tracing every nested reporter would bury the trace. |
+| 24 | Failure inside a called script or a branch | Only the failing step is marked failed; the enclosing `call` / `if` steps stay as they were. `RunResult.message` repeats the reason. | "The trace ends at it." |
+| 25 | Recursion limit | Depth 0 is the script that was run; a call from depth 30 is refused (`RunEnvironment.maxCallDepth`). | Spec §4.2. |
+| 26 | Cancellation flag | `RunEnvironment.isCancelled`, polled before every statement; handlers see it as `RunContext.isCancelled` and may also throw `Cancelled`. | Spec §7.2. |
+| 27 | Arithmetic that leaves the finite numbers | Division by zero and overflow give `0`. | Numbers stay finite, so they always print, compare and save. (Scratch gives `Infinity`.) |
+| 28 | `and` / `or` | Both sides are always evaluated. | Reporters are pure, so short-circuiting is unobservable. |
+| 29 | `contains`, `starts with`, `list contains` | Case-insensitive, like `=`. `x contains ""` is false; `x starts with ""` is true. | Consistent with `compare`. |
+| 30 | `matches regex` with an invalid pattern | False. | Coercion-style: never raise. |
+| 31 | `add days` | To a date: calendar days. To a timestamp: calendar days in the environment's zone (wall-clock time survives a DST change). `add hours/minutes`: exact seconds on a timestamp; wraps around midnight on a time. | The least surprising reading of each. |
+| 32 | `item n of list` | 1-based; out of range is empty. `split` by an empty separator gives one item. | As in Scratch. |
+| 33 | Severity of validation findings | Errors: unknown kind, missing callee, wrong shape, wrong reference kind, variable read before it can be set (or never set), empty required slot, `return` not matching the outputs. Warnings: type mismatches and a dropdown literal outside its options. | Spec §8 and §5.3. |
+| 34 | When does a type mismatch warn? | Not when the slot accepts text (everything converts), not for an untyped slot or a variable/reporter of unknown type, and not for a text literal that converts (`"12"` in a number slot). | Keeps warnings meaningful. |
+| 35 | Variable types for validation | Parameters and output bindings are typed; a `set` target, or a name bound to outputs of different types, is "unknown" and is accepted everywhere. | Flow-insensitive and simple. |
+| 36 | Empty slots | A slot with a default evaluates to it and is not "empty" for validation; a boolean slot without a predicate is false at run time and an error in validation. An empty text literal is a value, not a missing input. | So freshly dragged blocks validate. |
+| 37 | Host-defined C-blocks and caps | A host cap ends the script (as `returned`, no outputs). A host C-block runs its handler and its regions are ignored. | Loops are out of scope; this is where `for each` will hook in (§14). |
+
 ## Known limitations
 
 - `LocalTime` has whole-second precision; a timestamp's fraction is dropped when taking its time of day.

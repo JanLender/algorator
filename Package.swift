@@ -11,8 +11,11 @@ let package = Package(
     targets: [
         .target(name: "AlgoratorCore"),
         .target(name: "AlgoratorEditor", dependencies: ["AlgoratorCore"]),
-        .executableTarget(name: "AlgoratorDemo", dependencies: ["AlgoratorCore", "AlgoratorEditor"]),
-        .testTarget(name: "AlgoratorCoreTests", dependencies: ["AlgoratorCore"]),
-        .testTarget(name: "AlgoratorEditorTests", dependencies: ["AlgoratorEditor"]),
+        // The toy "ticket triage" vocabulary and acceptance document, shared by the demo app and the tests.
+        // Deliberately not a product: it never travels with the library into a consumer.
+        .target(name: "TicketDemo", dependencies: ["AlgoratorCore"], resources: [.copy("Resources/acceptance.json")]),
+        .executableTarget(name: "AlgoratorDemo", dependencies: ["AlgoratorCore", "AlgoratorEditor", "TicketDemo"]),
+        .testTarget(name: "AlgoratorCoreTests", dependencies: ["AlgoratorCore", "TicketDemo"]),
+        .testTarget(name: "AlgoratorEditorTests", dependencies: ["AlgoratorEditor", "TicketDemo"]),
     ]
 )
