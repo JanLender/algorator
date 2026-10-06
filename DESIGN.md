@@ -125,7 +125,7 @@ Places where the spec was ambiguous, and what was chosen.
 | Built-in blocks, interpreter | Unit tests per block and per rule of spec §8, plus the acceptance scripts on fake data. |
 | Validation | Unit tests for every finding of spec §8, including the three named in §10. |
 | Layout | Unit tests against hand-computed frames with a fixed-width measurer. |
-| Rendering | 13 snapshot PNGs in `Snapshots/`. Eight were inspected by eye during development (both acceptance scripts, the dark variant of one, the shapes sheet, three palettes, both drag pictures). |
+| Rendering | 13 snapshot PNGs in `Snapshots/`. Nine were inspected by eye during development (both acceptance scripts, the dark variant of one, the shapes sheet, three palettes, both drag pictures). |
 | Hit-testing, editing operations, drag logic | Table-driven and scenario unit tests; no view involved. |
 | Undo / redo | Eleven kinds of edit round-tripped through a real `UndoManager`. |
 | Building the acceptance scripts from nothing | A unit test performs the same operations the editor performs, checking each drop against the slot rules, and compares the traces with the hand-written document. |
