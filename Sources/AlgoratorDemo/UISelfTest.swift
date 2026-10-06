@@ -32,8 +32,25 @@ enum UISelfTest {
                 window.setFrame(CGRect(origin: window.frame.origin, size: CGSize(width: resize[1], height: resize[2])), display: true, animate: false)
             }
         }
+        var attempts = 0
         func send(_ index: Int) {
             guard let window = NSApp.windows.first(where: { $0.isVisible }) else { return finish("no window") }
+            if index == 0 {
+                // SwiftUI ignores the first click in a window that is not key (it only activates the window),
+                // so a replay into a background window silently does nothing. Say so instead.
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+                guard window.isKeyWindow || attempts >= 20 else {
+                    attempts += 1
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { send(0) }
+                    return
+                }
+                let frame = window.frame
+                FileHandle.standardError.write(Data("replay: window \(Int(frame.width))×\(Int(frame.height)), key window: \(window.isKeyWindow)\n".utf8))
+                guard window.isKeyWindow else {
+                    return finish("replay: the window could not become key (another app holds the focus); nothing was replayed")
+                }
+            }
             guard index < events.count else {
                 // Give popovers, focus changes and the like time to settle (and to complain) before quitting.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { finish(describe(document())) }

@@ -2,7 +2,7 @@ import Foundation
 import AlgoratorCore
 
 /// A drag in progress. Everything the view needs to draw it, and everything `drop` needs to finish it.
-public struct DragState: Equatable {
+public struct DragState: Equatable, Sendable {
     public var item: DraggedItem
     /// The script without the dragged blocks; drop targets refer to it.
     public var remaining: Script
@@ -29,7 +29,8 @@ public struct DragState: Equatable {
 }
 
 /// The drag-and-drop logic, free of views: pick up, track, drop. The view only feeds it pointer positions.
-public struct DragController {
+/// Pure functions over values, so it is non-isolated and `Sendable`.
+public struct DragController: Sendable {
     public var engine: LayoutEngine
 
     public init(engine: LayoutEngine) {

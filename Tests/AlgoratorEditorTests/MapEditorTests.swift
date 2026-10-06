@@ -62,7 +62,7 @@ final class MapEditorTests: XCTestCase {
     func testThirdAcceptanceScriptLayout() throws {
         let document = try AcceptanceDocument.load()
         let script = try XCTUnwrap(document.script(id: AcceptanceDocument.detailsID))
-        let tree = LayoutEngine(vocabulary: vocabulary, document: document, metrics: .fixed(), references: directory).layout(script)
+        let tree = LayoutEngine(vocabulary: vocabulary, document: document, metrics: .fixed()).layout(script)
         XCTAssertEqual(tree.allBlocks.map(\.id), ["fetch-details", "entry-title", "entry-priority", "entry-assignee", "review", "log",
                                                   "return-reviewed", "was-reviewed"])
         XCTAssertTrue(tree.allBlocks.allSatisfy(\.isKnown))

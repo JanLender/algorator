@@ -9,8 +9,8 @@ public enum DropTarget: Hashable, Sendable {
 }
 
 /// What is being dragged, with what hit-testing needs to know about it.
-public struct DraggedItem: Equatable {
-    public enum Payload: Equatable {
+public struct DraggedItem: Equatable, Sendable {
+    public enum Payload: Equatable, Sendable {
         /// A statement together with the statements beneath it.
         case stack([Block])
         case reporter(Block)

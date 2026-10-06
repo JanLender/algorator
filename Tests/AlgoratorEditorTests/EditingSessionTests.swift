@@ -64,6 +64,7 @@ final class EditingSessionTests: XCTestCase {
     // MARK: Undo and redo
 
     /// Every kind of edit, applied through the bridge, then undone and redone.
+    @MainActor
     func testUndoAndRedoRoundTripForEachEdit() throws {
         let stack = Fixture.stack, slots = Fixture.slots
         let bound = Script(id: "s", name: "Main", body: [Block(id: "o", kind: "t.one", bindings: ["r": "r"])])
@@ -116,6 +117,7 @@ final class EditingSessionTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testSeveralEditsUndoInReverseOrder() {
         let first = Document(scripts: [Fixture.stack])
         let second = first.addingScript(id: "a")
@@ -141,6 +143,7 @@ final class EditingSessionTests: XCTestCase {
         XCTAssertEqual(document, third)
     }
 
+    @MainActor
     func testAnEditThatChangesNothingIsNotRecorded() {
         var writes = 0
         let bridge = UndoBridge()

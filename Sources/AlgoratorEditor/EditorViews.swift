@@ -2,6 +2,7 @@ import SwiftUI
 import AlgoratorCore
 
 /// Draws one script. A thin wrapper: all geometry comes from the `LayoutTree`.
+@MainActor
 public struct ScriptCanvasView: View {
     public var tree: LayoutTree
     public var renderer: BlockRenderer
@@ -23,6 +24,7 @@ public struct ScriptCanvasView: View {
 }
 
 /// Draws the palette flyout of one category.
+@MainActor
 public struct PaletteCanvasView: View {
     public var palette: PaletteLayout
     public var renderer: BlockRenderer
@@ -40,9 +42,12 @@ public struct PaletteCanvasView: View {
 
 /// The editor: category tabs and palette on the left, one script on a canvas on the right.
 ///
+/// Main-actor, like every view. `references` is only ever called on the main actor.
+///
 /// The view holds no editing logic. It turns gestures into calls on `DragController`, `HitTest`,
 /// `SlotEditing` and the pure `Script` / `Document` operations, and draws what comes back. Every change
 /// goes through `UndoBridge`, so it can be undone from the window's Edit menu.
+@MainActor
 public struct AlgoratorEditorView: View {
     @Binding private var document: Document
     private let vocabulary: Vocabulary
@@ -107,7 +112,8 @@ public struct AlgoratorEditorView: View {
     }
 
     private var engine: LayoutEngine {
-        LayoutEngine(vocabulary: vocabulary, document: document, metrics: metrics, references: references)
+        LayoutEngine(vocabulary: vocabulary, document: document, metrics: metrics,
+                     referenceLabels: ReferenceLabels(document: document, provider: references))
     }
 
     public var body: some View {
@@ -453,6 +459,7 @@ public struct AlgoratorEditorView: View {
 
 /// Scrolls both ways and pins content smaller than the viewport to the top-left (a plain two-axis
 /// `ScrollView` centres it).
+@MainActor
 struct TopLeadingScrollView<Content: View>: View {
     @ViewBuilder var content: Content
 

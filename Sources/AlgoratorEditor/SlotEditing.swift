@@ -58,10 +58,11 @@ public enum SlotEditing {
 }
 
 /// Applies document edits and registers their undo with an `UndoManager`, so ⌘Z, ⇧⌘Z and the Edit menu
-/// work the way they do everywhere else on the Mac.
+/// work the way they do everywhere else on the Mac. Main-actor, like the undo manager it talks to.
+@MainActor
 public final class UndoBridge: ObservableObject {
     /// Stores a document (the editor points this at its binding).
-    public var write: (Document) -> Void = { _ in }
+    public var write: @MainActor (Document) -> Void = { _ in }
 
     public init() {}
 
@@ -70,7 +71,10 @@ public final class UndoBridge: ObservableObject {
         guard old != new else { return }
         write(new)
         undoManager?.registerUndo(withTarget: self) { bridge in
-            bridge.commit(from: new, to: old, name: name, undoManager: undoManager)
+            // The undo manager calls back on the main thread, where it lives.
+            MainActor.assumeIsolated {
+                bridge.commit(from: new, to: old, name: name, undoManager: undoManager)
+            }
         }
         undoManager?.setActionName(name)
     }

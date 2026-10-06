@@ -8,6 +8,7 @@ struct InlineEdit: Equatable {
 }
 
 /// The text field laid over a slot while its literal is typed.
+@MainActor
 struct InlineField: View {
     @Binding var text: String
     var width: CGFloat
@@ -58,6 +59,7 @@ struct PickerRequest: Identifiable, Equatable {
 }
 
 /// The popover behind dropdowns, reference pickers, variable and script pickers, and date/time pickers.
+@MainActor
 struct PickerPopover: View {
     enum Choice {
         case input(Input)
@@ -170,6 +172,7 @@ struct PickerPopover: View {
 }
 
 /// The form behind "Edit Script…": the entry block's data (name, parameters, declared outputs).
+@MainActor
 struct ScriptSettingsView: View {
     @State private var draft: Script
     private let referenceKinds: [String]

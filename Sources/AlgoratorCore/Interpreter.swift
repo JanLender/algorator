@@ -55,7 +55,12 @@ public struct RunResult: Equatable, Sendable {
 }
 
 /// Runs scripts of a document: synchronously, on the calling thread.
-public struct Interpreter {
+///
+/// Thread-agnostic. `run` executes on whatever thread calls it, and the handlers it calls run on that same
+/// thread. An interpreter is a `Sendable` value holding no mutable state, so one instance may be handed to
+/// other tasks and may `run` on several threads at once; each run has its own variables and trace. Nothing
+/// here touches the main thread or any global mutable state.
+public struct Interpreter: Sendable {
     public var document: Document
     public var vocabulary: Vocabulary
     public var environment: RunEnvironment
@@ -215,7 +220,7 @@ private final class Run {
             frame.variables[name] = .map(map)
 
         default:
-            bind(try definition.handler(inputs, context(frame)), of: block, frame)
+            bind(try invoke(definition, inputs, frame), of: block, frame)
             // A host-defined cap ends the script like `return`, with no outputs.
             if definition.shape == .cap { return .returned([:]) }
         }
@@ -228,11 +233,17 @@ private final class Run {
         }
     }
 
-    private func context(_ frame: Frame) -> RunContext {
+    /// Calls a handler with a fresh context, then moves the notes it left into the current step of the trace.
+    /// The context is closed afterwards, so a handler that kept it cannot touch the trace later.
+    private func invoke(_ definition: BlockDefinition, _ inputs: BlockInputs, _ frame: Frame) throws -> [String: Value] {
+        let context = RunContext(environment: environment, depth: frame.depth)
         let step = currentStep
-        return RunContext(environment: environment, depth: frame.depth) { [unowned self] note in
-            trace[step].note = trace[step].note.map { $0 + "\n" + note } ?? note
+        defer {
+            for note in context.close() {
+                trace[step].note = trace[step].note.map { $0 + "\n" + note } ?? note
+            }
         }
+        return try definition.handler(inputs, context)
     }
 
     // MARK: Inputs and reporters
@@ -264,7 +275,7 @@ private final class Run {
             throw BlockError("“\(block.kind)” is a statement and cannot be used as a value")
         }
         let inputs = try evaluate(definition.inputs, of: block, frame)
-        let result = try definition.handler(inputs, context(frame))[BlockDefinition.resultKey] ?? .empty
+        let result = try invoke(definition, inputs, frame)[BlockDefinition.resultKey] ?? .empty
         return definition.shape == .predicate ? .bool(Coercion.toBool(result)) : result
     }
 

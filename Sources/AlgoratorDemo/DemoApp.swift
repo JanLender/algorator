@@ -16,6 +16,7 @@ enum Main {
 }
 
 /// The host app's state: its fake help desk, the vocabulary built on it, and the document being edited.
+@MainActor
 final class DemoModel: ObservableObject {
     let directory = TicketDirectory.sample(now: Date())
     let vocabulary: Vocabulary

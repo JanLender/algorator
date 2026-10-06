@@ -3,20 +3,21 @@ import AlgoratorCore
 
 /// Draws layouts into a `GraphicsContext`. Has no state and reads nothing but its inputs, so the same
 /// drawing happens on screen and in a headless `ImageRenderer`.
+@MainActor
 public struct BlockRenderer {
     public var metrics: LayoutMetrics
     /// The worst validation issue per block id; drawn as a badge.
     public var issues: [String: Issue.Severity]
     public var selection: String?
 
-    public init(metrics: LayoutMetrics = .standard, issues: [String: Issue.Severity] = [:], selection: String? = nil) {
+    nonisolated public init(metrics: LayoutMetrics = .standard, issues: [String: Issue.Severity] = [:], selection: String? = nil) {
         self.metrics = metrics
         self.issues = issues
         self.selection = selection
     }
 
     /// Summarises validation issues for `init(issues:)`: an error outranks a warning.
-    public static func worstIssues(_ issues: [Issue]) -> [String: Issue.Severity] {
+    nonisolated public static func worstIssues(_ issues: [Issue]) -> [String: Issue.Severity] {
         issues.reduce(into: [:]) { result, issue in
             if result[issue.blockID] != .error { result[issue.blockID] = issue.severity }
         }

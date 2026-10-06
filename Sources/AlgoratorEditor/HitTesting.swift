@@ -2,7 +2,7 @@ import Foundation
 import AlgoratorCore
 
 /// What lies under a point of the canvas.
-public enum Pick: Equatable {
+public enum Pick: Equatable, Sendable {
     /// A block of the script (a statement or a reporter). `origin` is the top-left of its frame.
     case block(id: String, origin: CGPoint)
     /// A variable chip sitting in a slot.
@@ -16,7 +16,7 @@ public enum Pick: Equatable {
 }
 
 /// Where a pending drop will land, for drawing.
-public enum DropIndicator: Equatable {
+public enum DropIndicator: Equatable, Sendable {
     /// A bar between statements.
     case insertion(CGRect)
     /// A slot to highlight.

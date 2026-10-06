@@ -1,9 +1,14 @@
 import Foundation
+import os
 import AlgoratorCore
 
 /// A fake in-memory help desk: the "host app" of the demo.
-public final class TicketDirectory: ReferenceProvider {
-    public struct Ticket {
+///
+/// Block handlers run on whatever thread runs the interpreter, so everything they touch is kept behind one
+/// lock. That makes the directory genuinely `Sendable`: handlers may capture it, and several runs may use it
+/// at once.
+public final class TicketDirectory: ReferenceProvider, Sendable {
+    public struct Ticket: Sendable {
         public var title: String
         public var priority: String
         public var assignee: String
@@ -18,7 +23,7 @@ public final class TicketDirectory: ReferenceProvider {
         }
     }
 
-    public struct Notification: Equatable {
+    public struct Notification: Equatable, Sendable {
         public var user: String
         public var message: String
 
@@ -28,47 +33,83 @@ public final class TicketDirectory: ReferenceProvider {
         }
     }
 
-    public var tickets: [String: Ticket]
-    public var users: [String: String]
-    public private(set) var notifications: [Notification] = []
-    /// What `log details` wrote: one line per entry, in the map's order.
-    public private(set) var log: [String] = []
+    private struct State: Sendable {
+        var tickets: [String: Ticket]
+        var users: [String: String]
+        var notifications: [Notification] = []
+        var log: [String] = []
+    }
+
+    private let state: OSAllocatedUnfairLock<State>
 
     public init(tickets: [String: Ticket], users: [String: String]) {
-        self.tickets = tickets
-        self.users = users
+        state = OSAllocatedUnfairLock(initialState: State(tickets: tickets, users: users))
     }
+
+    /// Snapshots. To change a ticket use `updateTicket`, which is atomic; assigning here replaces them all.
+    public var tickets: [String: Ticket] {
+        get { state.withLock { $0.tickets } }
+        set { state.withLock { $0.tickets = newValue } }
+    }
+
+    public var users: [String: String] { state.withLock { $0.users } }
+    public var notifications: [Notification] { state.withLock { $0.notifications } }
+    /// What `log details` wrote: one line per entry, in the map's order.
+    public var log: [String] { state.withLock { $0.log } }
 
     /// Three tickets relative to `now`: T-1 is high priority, T-2 is old, T-3 is neither.
     public static func sample(now: Date) -> TicketDirectory {
+        TicketDirectory(tickets: sampleTickets(now: now), users: sampleUsers)
+    }
+
+    private static let sampleUsers = ["alice": "Alice", "bob": "Bob", "carol": "Carol", "ops": "Ops on call"]
+
+    private static func sampleTickets(now: Date) -> [String: Ticket] {
         let hour = 3600.0
-        return TicketDirectory(
-            tickets: [
-                "T-1": Ticket(title: "Login page is down", priority: "high", assignee: "alice",
-                              opened: now.addingTimeInterval(-1 * hour)),
-                "T-2": Ticket(title: "Typo in the footer", priority: "low", assignee: "bob",
-                              opened: now.addingTimeInterval(-5 * 24 * hour)),
-                "T-3": Ticket(title: "Update the logo", priority: "low", assignee: "carol",
-                              opened: now.addingTimeInterval(-3 * hour)),
-            ],
-            users: ["alice": "Alice", "bob": "Bob", "carol": "Carol", "ops": "Ops on call"])
+        return [
+            "T-1": Ticket(title: "Login page is down", priority: "high", assignee: "alice", opened: now.addingTimeInterval(-1 * hour)),
+            "T-2": Ticket(title: "Typo in the footer", priority: "low", assignee: "bob", opened: now.addingTimeInterval(-5 * 24 * hour)),
+            "T-3": Ticket(title: "Update the logo", priority: "low", assignee: "carol", opened: now.addingTimeInterval(-3 * hour)),
+        ]
     }
 
-    /// Back to the sample data relative to `now`, with no notifications and no labels.
+    /// Back to the sample data relative to `now`, with no notifications, no labels and an empty log.
     public func reset(now: Date) {
-        let fresh = TicketDirectory.sample(now: now)
-        tickets = fresh.tickets
-        users = fresh.users
-        notifications = []
-        log = []
+        state.withLock { $0 = State(tickets: TicketDirectory.sampleTickets(now: now), users: TicketDirectory.sampleUsers) }
     }
 
-    public func writeLog(_ line: String) {
-        log.append(line)
+    public func ticket(_ id: String) -> Ticket? {
+        state.withLock { $0.tickets[id] }
+    }
+
+    /// Changes one ticket atomically. Returns `false` when there is no such ticket.
+    @discardableResult
+    public func updateTicket(_ id: String, _ change: @Sendable (inout Ticket) -> Void) -> Bool {
+        state.withLock { state in
+            guard var ticket = state.tickets[id] else { return false }
+            change(&ticket)
+            state.tickets[id] = ticket
+            return true
+        }
+    }
+
+    /// Adds a label unless the ticket already has it. Returns whether it was added; `nil` for an unknown ticket.
+    public func addLabel(_ label: String, to id: String) -> Bool? {
+        state.withLock { state in
+            guard var ticket = state.tickets[id] else { return nil }
+            guard !ticket.labels.contains(label) else { return false }
+            ticket.labels.append(label)
+            state.tickets[id] = ticket
+            return true
+        }
+    }
+
+    public func writeLog(_ lines: [String]) {
+        state.withLock { $0.log += lines }
     }
 
     public func notify(user: String, message: String) {
-        notifications.append(Notification(user: user, message: message))
+        state.withLock { $0.notifications.append(Notification(user: user, message: message)) }
     }
 
     public func candidates(kind: String, matching: String) -> [ReferenceCandidate] {
@@ -83,16 +124,17 @@ public final class TicketDirectory: ReferenceProvider {
     }
 }
 
-/// The toy vocabulary: built-ins plus four ticket blocks backed by a `TicketDirectory`.
+/// The toy vocabulary: built-ins plus the ticket blocks, backed by a `TicketDirectory`. The handlers capture
+/// only the directory, which is `Sendable`.
 public enum TicketVocabulary {
     public static let tickets = BlockCategory(id: "tickets", title: "Tickets", color: BlockColor(hex: 0x9966FF))
     /// A ticket is overdue once it has been open this long.
     public static let overdueAfter: TimeInterval = 3 * 24 * 3600
 
     public static func make(directory: TicketDirectory) -> Vocabulary {
-        func ticket(_ inputs: BlockInputs) throws -> (id: String, ticket: TicketDirectory.Ticket) {
+        @Sendable func ticket(_ inputs: BlockInputs) throws -> (id: String, ticket: TicketDirectory.Ticket) {
             let id = inputs.reference("ticket").id
-            guard let ticket = directory.tickets[id] else { throw BlockError("There is no ticket “\(id)”") }
+            guard let ticket = directory.ticket(id) else { throw BlockError("There is no ticket “\(id)”") }
             return (id, ticket)
         }
         return Vocabulary([
@@ -117,21 +159,15 @@ public enum TicketVocabulary {
             .statement("ticket.addLabel", category: tickets, title: "add label %label to %ticket",
                        inputs: [.value("label", .text), .reference("ticket", kind: "ticket")]) { inputs, context in
                 let (id, _) = try ticket(inputs)
-                let label = inputs.text("label")
-                if directory.tickets[id]?.labels.contains(label) == true {
-                    context.note("Already labelled")
-                } else {
-                    directory.tickets[id]?.labels.append(label)
-                }
+                if directory.addLabel(inputs.text("label"), to: id) == false { context.note("Already labelled") }
                 return [:]
             },
             // One map slot instead of a variable number of slots.
             .statement("ticket.logDetails", category: tickets, title: "log details %details",
                        inputs: [.map("details")]) { inputs, context in
                 let details = inputs.map("details")
-                for entry in details.entries {
-                    directory.writeLog("\(entry.key): \(Coercion.toText(entry.value, in: inputs.environment))")
-                }
+                // One call, so the lines of two concurrent runs never interleave.
+                directory.writeLog(details.entries.map { "\($0.key): \(Coercion.toText($0.value, in: inputs.environment))" })
                 context.note("Logged \(details.count) \(details.count == 1 ? "entry" : "entries")")
                 return [:]
             },

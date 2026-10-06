@@ -159,12 +159,25 @@ final class LayoutTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testReferenceLiteralsUseTheProvidersLabel() {
         struct Provider: ReferenceProvider {
             func candidates(kind: String, matching: String) -> [ReferenceCandidate] { [ReferenceCandidate(id: "u1", label: "Alice")] }
         }
+        // The provider is asked once, on the main actor, for the references a document contains…
+        let greet = Block(kind: "t.greet", inputs: ["who": .literal(.reference(Reference(kind: "user", id: "u1")))])
+        let nested = Block(kind: BuiltIn.if, regions: ["then": [
+            Block(kind: "t.say", inputs: ["text": .reporter(Block(kind: "operator.join", inputs: [
+                "a": .literal(.reference(Reference(kind: "user", id: "u9"))), "b": .literal("x")]))]),
+        ]])
+        let document = Document(scripts: [Script(id: "s", name: "S", body: [greet, nested])])
+        let labels = ReferenceLabels(document: document, provider: Provider())
+        XCTAssertEqual(labels, ReferenceLabels([Reference(kind: "user", id: "u1"): "Alice"]), "u9 is unknown to the provider")
+        XCTAssertEqual(ReferenceLabels(document: document, provider: nil), ReferenceLabels())
+
+        // … and layout, a pure function, only reads the resulting labels.
         var engine = engine()
-        engine.references = Provider()
+        engine.referenceLabels = labels
         let known = Block(kind: "t.greet", inputs: ["who": .literal(.reference(Reference(kind: "user", id: "u1")))])
         let gone = Block(kind: "t.greet", inputs: ["who": .literal(.reference(Reference(kind: "user", id: "u9")))])
         XCTAssertEqual(engine.stack(known, in: empty).slots.first?.content, .menu("Alice", isPlaceholder: false))

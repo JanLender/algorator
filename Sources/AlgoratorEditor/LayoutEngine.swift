@@ -1,23 +1,59 @@
 import Foundation
 import AlgoratorCore
 
+/// Labels of the reference literals in a document, looked up from the host's `ReferenceProvider` ahead of
+/// layout. The provider is main-actor business; the labels are a plain `Sendable` value, which is what lets
+/// layout stay a pure function that can run anywhere.
+public struct ReferenceLabels: Equatable, Sendable {
+    public var labels: [Reference: String]
+
+    public init(_ labels: [Reference: String] = [:]) {
+        self.labels = labels
+    }
+
+    /// Asks the provider for the label of every reference literal in the document.
+    @MainActor
+    public init(document: Document, provider: ReferenceProvider?) {
+        var labels: [Reference: String] = [:]
+        func visit(_ blocks: [Block]) {
+            for block in blocks {
+                for input in block.inputs.values {
+                    switch input {
+                    case .literal(.reference(let reference)) where labels[reference] == nil:
+                        labels[reference] = provider?.label(kind: reference.kind, id: reference.id)
+                    case .reporter(let reporter):
+                        visit([reporter])
+                    default:
+                        break
+                    }
+                }
+                block.regions.values.forEach(visit)
+            }
+        }
+        if provider != nil { document.scripts.forEach { visit($0.body) } }
+        self.labels = labels
+    }
+
+    public subscript(reference: Reference) -> String? { labels[reference] }
+}
+
 /// Computes where everything goes. A pure function of the script, the vocabulary and the metrics: no views,
-/// no state. Blocks are first laid out at the origin and then translated into place.
-public struct LayoutEngine {
+/// no state, non-isolated and `Sendable`. Blocks are first laid out at the origin and then translated into place.
+public struct LayoutEngine: Sendable {
     public var vocabulary: Vocabulary
     public var document: Document
     public var metrics: LayoutMetrics
-    /// Gives reference literals their labels; without it they show their ids.
-    public var references: ReferenceProvider?
+    /// Gives reference literals their labels; a reference without one shows its id.
+    public var referenceLabels: ReferenceLabels
     /// The zone timestamp literals are displayed in.
     public var timeZone: TimeZone
 
     public init(vocabulary: Vocabulary, document: Document, metrics: LayoutMetrics = .standard,
-                references: ReferenceProvider? = nil, timeZone: TimeZone = .current) {
+                referenceLabels: ReferenceLabels = ReferenceLabels(), timeZone: TimeZone = .current) {
         self.vocabulary = vocabulary
         self.document = document
         self.metrics = metrics
-        self.references = references
+        self.referenceLabels = referenceLabels
         self.timeZone = timeZone
     }
 
@@ -248,7 +284,7 @@ public struct LayoutEngine {
         var text: String
         switch value {
         case .reference(let reference):
-            text = references?.label(kind: reference.kind, id: reference.id) ?? reference.id
+            text = referenceLabels[reference] ?? reference.id
         case .timestamp:
             let date = Coercion.toDate(value, in: environment)?.description ?? ""
             let time = Coercion.toTime(value, in: environment)?.description ?? ""

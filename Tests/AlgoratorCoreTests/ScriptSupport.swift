@@ -32,42 +32,46 @@ func call(_ id: String, _ script: String, _ arguments: [String: Input] = [:], bi
 let yes = rep("operator.equals", ["a": lit(1), "b": lit(1)])
 let no = rep("operator.equals", ["a": lit(1), "b": lit(2)])
 
-/// A vocabulary with observable side effects, for interpreter and validation tests.
-final class TestHost {
-    var logged: [Value] = []
-    private(set) var vocabulary = Vocabulary()
+/// A vocabulary with observable side effects, for interpreter and validation tests. Its handlers capture only
+/// the lock-guarded log, as real host handlers must.
+final class TestHost: Sendable {
+    private let log = Locked<[Value]>([])
+    let vocabulary: Vocabulary
+
+    var logged: [Value] { log.value }
 
     init() {
+        let log = self.log
         let category = BlockCategory(id: "test", title: "Test", color: BlockColor(hex: 0x888888))
-        vocabulary.register(.statement("test.log", category: category, title: "log %value", inputs: [.value("value")]) { [unowned self] inputs, _ in
-            logged.append(inputs["value"])
-            return [:]
-        })
-        vocabulary.register(.statement("test.fail", category: category, title: "fail %message",
-                                       inputs: [.value("message", .text)]) { inputs, _ in
-            throw BlockError(inputs.text("message"))
-        })
-        vocabulary.register(.statement("test.cancel", category: category, title: "cancel") { _, _ in throw Cancelled() })
-        vocabulary.register(.statement("test.pair", category: category, title: "make pair",
-                                       outputs: [OutputDefinition("first", .number), OutputDefinition("second", .text)]) { _, context in
-            context.note("made a pair")
-            context.note("at depth \(context.depth)")
-            return ["first": 1, "second": "two"]
-        })
-        vocabulary.register(.statement("test.defaults", category: category, title: "defaults %count %flag",
-                                       inputs: [.value("count", .number, default: 7), .boolean("flag")]) { [unowned self] inputs, _ in
-            logged.append(inputs["count"])
-            logged.append(inputs["flag"])
-            return [:]
-        })
-        vocabulary.register(.reporter("test.user", category: category, title: "current user", result: .reference,
-                                      referenceKind: "user") { _, _ in .reference(Reference(kind: "user", id: "u1")) })
-        vocabulary.register(.reporter("test.boom", category: category, title: "boom", result: .text) { _, _ in
-            throw BlockError("reporter exploded")
-        })
-        vocabulary.register(.statement("test.needsUser", category: category, title: "greet %user",
-                                       inputs: [.reference("user", kind: "user")]) { _, _ in [:] })
-        vocabulary.register(BlockDefinition(id: "test.stop", shape: .cap, category: category, title: "stop") { _, _ in [:] })
+        vocabulary = Vocabulary([
+            .statement("test.log", category: category, title: "log %value", inputs: [.value("value")]) { inputs, _ in
+                log.update { $0.append(inputs["value"]) }
+                return [:]
+            },
+            .statement("test.fail", category: category, title: "fail %message", inputs: [.value("message", .text)]) { inputs, _ in
+                throw BlockError(inputs.text("message"))
+            },
+            .statement("test.cancel", category: category, title: "cancel") { _, _ in throw Cancelled() },
+            .statement("test.pair", category: category, title: "make pair",
+                       outputs: [OutputDefinition("first", .number), OutputDefinition("second", .text)]) { _, context in
+                context.note("made a pair")
+                context.note("at depth \(context.depth)")
+                return ["first": 1, "second": "two"]
+            },
+            .statement("test.defaults", category: category, title: "defaults %count %flag",
+                       inputs: [.value("count", .number, default: 7), .boolean("flag")]) { inputs, _ in
+                log.update { $0 += [inputs["count"], inputs["flag"]] }
+                return [:]
+            },
+            .reporter("test.user", category: category, title: "current user", result: .reference, referenceKind: "user") { _, _ in
+                .reference(Reference(kind: "user", id: "u1"))
+            },
+            .reporter("test.boom", category: category, title: "boom", result: .text) { _, _ in
+                throw BlockError("reporter exploded")
+            },
+            .statement("test.needsUser", category: category, title: "greet %user", inputs: [.reference("user", kind: "user")]) { _, _ in [:] },
+            BlockDefinition(id: "test.stop", shape: .cap, category: category, title: "stop") { _, _ in [:] },
+        ])
     }
 
     func run(_ script: Script, others: [Script] = [], arguments: [String: Value] = [:],

@@ -146,12 +146,29 @@ Places where the spec was ambiguous, and what was chosen.
 | 99 | Third script's output | `escalated: bool`, returned straight from `value of "reviewed" in reviewed`. | Spec §4. The reporter's type is unknown statically, which the bool slot accepts without a warning. |
 | 100 | `acceptance.json` | Now schema version 2 with three scripts; the hand-written third binds three of `fetch ticket`'s four outputs, as the spec lists. | Shows an unbound output chip (`opened → …`) in the snapshot. |
 
+### M8 — strict concurrency (SPEC-maps.md §9)
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 101 | How checking is switched on | `swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]` on `AlgoratorCore`, `AlgoratorEditor` and `TicketDemo`, with tools 5.9 and the Swift 5 language mode kept. On this toolchain (Swift 6.2) that spelling enables *complete* checking: it reported the missing conformances at once. | Spec §9.4. Consumers on 5.9 can still load the package. |
+| 102 | Decision 19 reversed | `BlockHandler` is `@Sendable`; `BlockDefinition`, `Vocabulary`, `BlockSignature`, `BlockInputs` and `Interpreter` are `Sendable` by real conformance. | Spec §9.3. A host handler captures an actor, a lock-guarded object or immutable values. Source-breaking, and intended. |
+| 103 | `RunContext` | A final class, `@unchecked Sendable`: immutable except a list of notes behind an `NSLock`. The interpreter creates one per handler invocation, and after the handler returns it **closes** the context and copies the notes into the trace; a note arriving later is dropped. | The previous design gave the context a closure into the interpreter's trace, which a handler keeping the context (or noting from a worker thread) could have corrupted. Now the trace is only ever touched by the running thread. `NSLock` because the core imports Foundation only. |
+| 104 | `ReferenceProvider` and layout | The protocol is not `Sendable` and not isolated; it is documented as called on the main actor only. `LayoutEngine` no longer holds a provider: the editor resolves the labels of the document's reference literals up front, on the main actor, into a `Sendable` `ReferenceLabels` value that layout reads. | The two requirements — "do not force `Sendable` on providers" and "layout is non-isolated and `Sendable`" — cannot both hold while layout calls the provider. |
+| 105 | Why the protocol itself is not `@MainActor` | Annotating it would make a conforming class main-actor as a whole. The demo's directory is both the provider *and* the state its handlers use off the main thread. | Documented contract instead of inferred isolation. |
+| 106 | What is main-actor in the editor | The views, `BlockRenderer` (it draws into a SwiftUI context) and `UndoBridge`. `BlockRenderer.init` and `worstIssues` are `nonisolated`, being plain data. | Spec §9.2. |
+| 107 | What is `Sendable` in the editor | `LayoutEngine`, `LayoutMetrics` (its measurer is a `@Sendable` closure), `DragController`, `DragState`, `DraggedItem`, `DropTarget`, `Pick`, `DropIndicator`, `ReferenceLabels` and every layout type. `HitTest`, `BlockFactory` and `SlotEditing` are stateless namespaces. | Pure functions over values. Layout verifiably runs off the main actor (the Swift 6 consumer does it). |
+| 108 | The undo callback | `UndoManager` calls the registered closure back without an isolation the compiler can see; the closure uses `MainActor.assumeIsolated`. | The undo manager lives on the main thread; the assertion traps rather than races if that were ever untrue. |
+| 109 | The demo's shared state | `TicketDirectory` keeps tickets, users, notifications and the log in one `OSAllocatedUnfairLock`, which makes it `Sendable` by real conformance. Handlers use atomic operations (`addLabel`, `writeLog` of all lines at once). | Spec §9.4: fix it with a lock, do not silence the compiler. `import os` is fine outside the core. |
+| 110 | Statics | The built-in block lists are `static let` of `Sendable` definitions. No formatter, calendar or other non-`Sendable` object is kept in a static; calendars are made on demand. | Spec §9.3. |
+| 111 | `@unchecked Sendable` | Used once in the library (`RunContext`), and in the tests' lock-guarded box. | Spec §9.3 asks for real conformance elsewhere. |
+
 ## What is verified, and how
 
 | Area | How |
 |---|---|
 | Coercion, compare, dates and times | Table-driven unit tests with a fixed time zone and clock. |
 | Document JSON | Byte-identical round-trip; hand-written JSON; unknown kinds; newer schema rejected; malformed input rejected. |
+| Strict concurrency (M8) | **Compiler**: a clean build of the package with complete checking reports 0 warnings; `Examples/Consumer6` (Swift 6 language mode) clean-builds with 0 warnings and 0 errors, and runs. **Compile-time test**: 39 public types required to be `Sendable`. **Run time**: one `Interpreter` run from 50 concurrent tasks (a script calling another, handlers adding notes, maps) with every `RunResult` equal to the single-threaded one; 50 concurrent runs against the demo's shared directory with no log line lost or interleaved; 200 notes from concurrent workers all kept; a context kept after its handler returned cannot touch the trace. |
 | Maps (M7) | Each of the nine blocks; reporters leaving their argument untouched; `set entry` / `remove entry` starting from unset, from text and from JSON text; **rebinding leaving copies held elsewhere unchanged**; validation of `set entry` as a binding of type map; the third acceptance script's outputs, trace, notes and log from hand-written JSON; the Maps palette; a layout test and a snapshot of the third script; the build-from-nothing test extended to it; drops onto a map slot (variable, reporter, predicate accepted; statement not; wrong type only warns). |
 | Maps (M6) | `OrderedMap` semantics (replace in place, append, remove, duplicates, value semantics under copy); every coercion rule of SPEC-maps §2.2 table-driven, including the text round-trip and 27 kinds of invalid JSON; maps in documents (pairs array, nested, byte-identical, duplicate keys, malformed); a version 1 document loads; a handler receiving and returning maps. |
 | Built-in blocks, interpreter | Unit tests per block and per rule of spec §8, plus the acceptance scripts on fake data. |
@@ -172,6 +189,8 @@ Places where the spec was ambiguous, and what was chosen.
 - dragging after the canvas or the palette has been scrolled;
 - Open… / Save…;
 - **building the third (maps) script by hand in the window** — the operations are tested, the gestures for it are not;
+- **Gestures in the M8 build**: the `--ui-test` replay could not run at the end of M8 because the demo window could not become the key window while another app held the focus (SwiftUI ignores clicks in a non-key window). The M7 build failed the same replay at the same moment, so this is the environment, not M8; the replay mode now reports it instead of silently doing nothing. Dragging and clicking in the M8 build still want a try by hand;
+- **Thread Sanitizer**: the concurrency tests were not run under it. The sanitizer build succeeded but the test runner would not start with the sanitizer loaded in this environment;
 - light mode in the running app (snapshots only);
 - that on-screen text is exactly as wide as the layout measured it (AppKit measures, SwiftUI draws).
 

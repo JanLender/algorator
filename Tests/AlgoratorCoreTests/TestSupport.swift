@@ -11,6 +11,26 @@ let fixedNow = Date(timeIntervalSince1970: 1_791_108_000)
 let env = RunEnvironment(timeZone: prague, now: { fixedNow })
 let utcEnv = RunEnvironment(timeZone: utc, now: { fixedNow })
 
+/// Mutable state a `@Sendable` handler may capture: guarded by a lock. Test-only.
+final class Locked<State: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var state: State
+
+    init(_ state: State) { self.state = state }
+
+    var value: State {
+        lock.lock()
+        defer { lock.unlock() }
+        return state
+    }
+
+    func update(_ change: (inout State) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        change(&state)
+    }
+}
+
 func date(_ iso: String) -> Value { .date(LocalDate(iso: iso)!) }
 func time(_ iso: String) -> Value { .time(LocalTime(iso: iso)!) }
 func stamp(_ iso: String) -> Value { .timestamp(Coercion.toTimestamp(.text(iso), in: utcEnv)!) }

@@ -3,7 +3,7 @@ import AlgoratorCore
 
 /// The frames of everything in one script, in canvas coordinates (origin top-left). Pure data: the
 /// renderer draws it and hit-testing reads it.
-public struct LayoutTree: Equatable {
+public struct LayoutTree: Equatable, Sendable {
     public var size: CGSize
     public var entry: EntryLayout
     /// The script's body: the root region, directly under the entry block.
@@ -11,7 +11,7 @@ public struct LayoutTree: Equatable {
 }
 
 /// The hat block: the script's name, parameters and declared outputs.
-public struct EntryLayout: Equatable {
+public struct EntryLayout: Equatable, Sendable {
     public var frame: CGRect
     public var title: LabelLayout
     public var parameters: [ChipLayout]
@@ -21,13 +21,13 @@ public struct EntryLayout: Equatable {
 }
 
 /// A small named pill: a parameter or output on the entry block.
-public struct ChipLayout: Equatable {
+public struct ChipLayout: Equatable, Sendable {
     public var name: String
     public var frame: CGRect
 }
 
 /// A vertical run of stack blocks: the script body, or one mouth of a C-block.
-public struct RegionLayout: Equatable {
+public struct RegionLayout: Equatable, Sendable {
     /// The C-block owning the region; `nil` for the script body.
     public var ownerID: String?
     public var name: String
@@ -36,7 +36,7 @@ public struct RegionLayout: Equatable {
     public var blocks: [BlockLayout]
 }
 
-public struct BlockLayout: Equatable, Identifiable {
+public struct BlockLayout: Equatable, Identifiable, Sendable {
     public var id: String
     public var kind: String
     /// The shape it is drawn with — decided by where it sits, so a misplaced block still shows.
@@ -56,24 +56,24 @@ public struct BlockLayout: Equatable, Identifiable {
     public var footer: CGRect?
 }
 
-public struct DividerLayout: Equatable {
+public struct DividerLayout: Equatable, Sendable {
     public var frame: CGRect
     public var label: LabelLayout
 }
 
-public enum PieceLayout: Equatable {
+public enum PieceLayout: Equatable, Sendable {
     case label(LabelLayout)
     case slot(SlotLayout)
     case binding(BindingLayout)
 }
 
-public struct LabelLayout: Equatable {
+public struct LabelLayout: Equatable, Sendable {
     public var text: String
     public var frame: CGRect
     public var role: LayoutMetrics.TextRole
 }
 
-public struct SlotLayout: Equatable {
+public struct SlotLayout: Equatable, Sendable {
     public var blockID: String
     public var name: String
     public var frame: CGRect
@@ -82,7 +82,7 @@ public struct SlotLayout: Equatable {
     public var content: SlotContent
 }
 
-public indirect enum SlotContent: Equatable {
+public indirect enum SlotContent: Equatable, Sendable {
     /// Nothing in it, and nothing to type.
     case hole
     /// A white, typeable literal.
@@ -95,7 +95,7 @@ public indirect enum SlotContent: Equatable {
 }
 
 /// The `→ [variable ▾]` chip of one output.
-public struct BindingLayout: Equatable {
+public struct BindingLayout: Equatable, Sendable {
     public var blockID: String
     public var output: String
     /// The bound variable; empty when the output is not bound.
@@ -105,13 +105,13 @@ public struct BindingLayout: Equatable {
 }
 
 /// The palette flyout of one category.
-public struct PaletteLayout: Equatable {
+public struct PaletteLayout: Equatable, Sendable {
     public var size: CGSize
     public var items: [PaletteItem]
 }
 
-public struct PaletteItem: Equatable {
-    public enum Source: Equatable {
+public struct PaletteItem: Equatable, Sendable {
+    public enum Source: Equatable, Sendable {
         /// A fresh block to drop in.
         case block(Block)
         /// A variable chip to drop into a slot.

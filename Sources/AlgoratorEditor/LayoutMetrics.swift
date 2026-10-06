@@ -1,7 +1,8 @@
 import AppKit
 
 /// Every dimension the layout uses, plus the text measurer. Layout is a pure function of the script and these.
-public struct LayoutMetrics {
+/// `Sendable`: the measurer is a `@Sendable` closure, so layout may run off the main thread.
+public struct LayoutMetrics: Sendable {
     public enum TextRole: Hashable, Sendable {
         /// Words on a block.
         case label
@@ -50,9 +51,9 @@ public struct LayoutMetrics {
     public var canvasPadding: CGFloat = 16
     public var paletteGap: CGFloat = 12
 
-    public var measure: (String, TextRole) -> CGSize
+    public var measure: @Sendable (String, TextRole) -> CGSize
 
-    public init(measure: @escaping (String, TextRole) -> CGSize) {
+    public init(measure: @escaping @Sendable (String, TextRole) -> CGSize) {
         self.measure = measure
     }
 

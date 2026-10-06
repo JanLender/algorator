@@ -96,7 +96,7 @@ let tickets = BlockCategory(id: "tickets", title: "Tickets", color: BlockColor(h
 let vocabulary = Vocabulary([
     .statement("ticket.notify", category: tickets, title: "notify %user message %message",
                inputs: [.reference("user", kind: "user"), .value("message", .text)]) { inputs, context in
-        try mailer.send(to: inputs.reference("user").id, inputs.text("message"))   // may throw: the step fails
+        try mailer.send(to: inputs.reference("user").id, inputs.text("message"))   // `mailer` must be Sendable
         context.note("sent")
         return [:]                                                                 // outputs, by name
     },
@@ -114,6 +114,35 @@ let result = Interpreter(document: document, vocabulary: vocabulary)
 
 // The editor. `references` backs the reference pickers; edits register with the window's undo manager.
 AlgoratorEditorView(document: $document, vocabulary: vocabulary, references: myDirectory)
+```
+
+## Threading
+
+The package builds with tools 5.9 in the Swift 5 language mode, and is checked with **complete strict
+concurrency**; it is usable unchanged from Swift 5 and Swift 6 consumers.
+
+- **`AlgoratorCore` is thread-agnostic.** `Interpreter.run` is synchronous: it runs on whatever thread calls it,
+  and the handlers it calls run on that same thread. `Document`, `Vocabulary` and `Interpreter` are `Sendable`
+  values with no shared mutable state, so the same ones may be handed to other tasks and used from several
+  threads at once. Nothing in the core touches the main thread.
+- **A block handler is `@Sendable`.** It may capture only `Sendable` state: immutable values, an actor, or an
+  object that guards its own state with a lock. The `RunContext` it receives belongs to that one invocation;
+  do not keep it after returning.
+- **`AlgoratorEditor`'s UI is main-actor**: the views, `BlockRenderer` and `UndoBridge`. Its pure parts —
+  `LayoutEngine`, `HitTest`, `DragController`, the `Script` editing operations — are non-isolated and `Sendable`.
+- **`ReferenceProvider` is called on the main actor only**, by the editor. An implementation may read main-actor
+  state and need not be `Sendable`.
+
+```swift
+let interpreter = Interpreter(document: document, vocabulary: vocabulary)
+let result = await Task.detached { interpreter.run(scriptID: id, arguments: arguments) }.value
+```
+
+[`Examples/Consumer6`](Examples/Consumer6) is a consumer in the Swift 6 language mode doing this; it must
+build without a single warning:
+
+```bash
+cd Examples/Consumer6 && swift build && swift run Consumer6
 ```
 
 ## Maps

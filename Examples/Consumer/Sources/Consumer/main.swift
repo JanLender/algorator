@@ -1,20 +1,22 @@
 import SwiftUI
+import os
 import AlgoratorCore
 import AlgoratorEditor
 
-// 1. The host registers its own block, with a native handler.
-var greetings: [String] = []
+// 1. The host registers its own blocks, with native handlers. A handler is `@Sendable` (it runs on whatever
+//    thread runs the interpreter), so the state it writes to is behind a lock.
+let greetings = OSAllocatedUnfairLock(initialState: [String]())
 let category = BlockCategory(id: "greeter", title: "Greeter", color: BlockColor(hex: 0x4C97FF))
 let vocabulary = Vocabulary([
     .statement("greeter.greet", category: category, title: "greet %name", inputs: [.value("name", .text)]) { inputs, context in
-        greetings.append("Hello, \(inputs.text("name"))!")
+        greetings.withLock { $0.append("Hello, \(inputs.text("name"))!") }
         context.note("greeted")
         return [:]
     },
     // One map slot instead of a variable number of slots: the handler gets the named values in order.
     .statement("greeter.announce", category: category, title: "announce %facts", inputs: [.map("facts")]) { inputs, _ in
         let facts = inputs.map("facts").entries.map { "\($0.key)=\(Coercion.toText($0.value, in: inputs.environment))" }
-        greetings.append(facts.joined(separator: ", "))
+        greetings.withLock { $0.append(facts.joined(separator: ", ")) }
         return [:]
     },
 ])
@@ -39,7 +41,7 @@ let reloaded = try Document(json: try document.jsonData())
 print("issues: \(issues.count)")
 print("status: \(result.status.rawValue), outputs: \(result.outputs)")
 print("trace: \(result.trace.map(\.label))")
-print("greetings: \(greetings)")
+print("greetings: \(greetings.withLock { $0 })")
 print("round-trips: \(reloaded == document)")
 
 // 4. The editor: lay the script out and embed the view. (Nothing is shown; this proves it links.)
@@ -62,7 +64,7 @@ struct HostView: View {
 _ = HostView(document: document, vocabulary: vocabulary)
 
 guard issues.isEmpty, result.status == .returned, result.outputs["greeted"] == .bool(true),
-      greetings == ["Hello, Algorator!", "library=Algorator, blocks=9"], reloaded == document else {
+      greetings.withLock({ $0 }) == ["Hello, Algorator!", "library=Algorator, blocks=9"], reloaded == document else {
     fatalError("the consumer example did not behave as expected")
 }
 print("OK")

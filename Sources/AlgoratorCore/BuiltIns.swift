@@ -69,12 +69,12 @@ extension Vocabulary {
     ]
 
     private static let operatorBlocks: [BlockDefinition] = {
-        func comparison(_ id: String, _ symbol: String, _ test: @escaping (ComparisonResult) -> Bool) -> BlockDefinition {
+        func comparison(_ id: String, _ symbol: String, _ test: @escaping @Sendable (ComparisonResult) -> Bool) -> BlockDefinition {
             .predicate("operator.\(id)", category: operators, title: "%a \(symbol) %b", inputs: [.value("a"), .value("b")]) { inputs, _ in
                 test(Coercion.compare(inputs["a"], inputs["b"], in: inputs.environment))
             }
         }
-        func arithmetic(_ id: String, _ symbol: String, _ operation: @escaping (Double, Double) -> Double) -> BlockDefinition {
+        func arithmetic(_ id: String, _ symbol: String, _ operation: @escaping @Sendable (Double, Double) -> Double) -> BlockDefinition {
             .reporter("operator.\(id)", category: operators, title: "%a \(symbol) %b",
                       inputs: [.value("a", .number), .value("b", .number)], result: .number) { inputs, _ in
                 // Numbers stay finite: overflow and division by zero give 0.
@@ -96,10 +96,10 @@ extension Vocabulary {
             .predicate("operator.not", category: operators, title: "not %a", inputs: [.boolean("a")]) { inputs, _ in
                 !inputs.bool("a")
             },
-            arithmetic("add", "+", +),
-            arithmetic("subtract", "−", -),
-            arithmetic("multiply", "×", *),
-            arithmetic("divide", "÷", /),
+            arithmetic("add", "+") { $0 + $1 },
+            arithmetic("subtract", "−") { $0 - $1 },
+            arithmetic("multiply", "×") { $0 * $1 },
+            arithmetic("divide", "÷") { $0 / $1 },
             .reporter("operator.join", category: operators, title: "join %a %b",
                       inputs: [.value("a", .text), .value("b", .text)], result: .text) { inputs, _ in
                 .text(inputs.text("a") + inputs.text("b"))

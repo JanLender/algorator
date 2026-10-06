@@ -2,6 +2,7 @@ import SwiftUI
 import AlgoratorCore
 
 /// Shows the outcome of a run: its status, outputs and the trace, one row per executed step.
+@MainActor
 public struct RunTraceView: View {
     public var result: RunResult
 

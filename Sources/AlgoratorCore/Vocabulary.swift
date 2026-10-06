@@ -180,7 +180,7 @@ public enum TitlePart: Hashable, Sendable {
 }
 
 /// The evaluated inputs of one block invocation, with Scratch-style typed accessors that never fail.
-public struct BlockInputs {
+public struct BlockInputs: Sendable {
     public let values: [String: Value]
     public let environment: RunEnvironment
     let referenceKinds: [String: String]
@@ -204,32 +204,51 @@ public struct BlockInputs {
 }
 
 /// What a handler can see of the run it is part of.
-public final class RunContext {
+///
+/// A context belongs to **one invocation** of a handler: do not keep it after the handler returns (notes
+/// added later are dropped). During the invocation it may be used from any thread, e.g. a worker the handler
+/// waits for.
+///
+/// `@unchecked Sendable`: everything is immutable except the collected notes, which are guarded by a lock.
+public final class RunContext: @unchecked Sendable {
     public let environment: RunEnvironment
     /// 0 in the script that was run, 1 in a script it called, …
     public let depth: Int
-    private let sink: (String) -> Void
+    private let lock = NSLock()
+    private var notes: [String] = []
+    private var isClosed = false
 
-    init(environment: RunEnvironment, depth: Int, sink: @escaping (String) -> Void) {
+    init(environment: RunEnvironment, depth: Int) {
         self.environment = environment
         self.depth = depth
-        self.sink = sink
     }
 
     public var now: Date { environment.now() }
     public var isCancelled: Bool { environment.isCancelled() }
 
     /// Attaches a human-readable remark to the current step of the trace.
-    public func note(_ text: String) { sink(text) }
+    public func note(_ text: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        if !isClosed { notes.append(text) }
+    }
+
+    /// Ends the invocation: returns the notes collected so far and ignores any that come later.
+    func close() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        isClosed = true
+        return notes
+    }
 }
 
 /// Throw from a handler to end the run as *cancelled* rather than failed.
-public struct Cancelled: Error {
+public struct Cancelled: Error, Sendable {
     public init() {}
 }
 
 /// A failure with a message for the trace. Handlers may throw any `Error`; this is a convenience.
-public struct BlockError: LocalizedError, Equatable {
+public struct BlockError: LocalizedError, Equatable, Sendable {
     public var message: String
     public init(_ message: String) { self.message = message }
     public var errorDescription: String? { message }
@@ -237,10 +256,14 @@ public struct BlockError: LocalizedError, Equatable {
 
 /// Native code behind a block. Synchronous; statement blocks return their outputs by name,
 /// reporters and predicates return theirs under `BlockDefinition.resultKey`.
-public typealias BlockHandler = (BlockInputs, RunContext) throws -> [String: Value]
+///
+/// A handler runs on whatever thread called `Interpreter.run`, possibly on several threads at once, so it is
+/// `@Sendable`: it may capture only `Sendable` state — immutable values, an actor, or an object that guards
+/// its own state with a lock.
+public typealias BlockHandler = @Sendable (BlockInputs, RunContext) throws -> [String: Value]
 
 /// One kind of block: its look, its slots and the native code it runs.
-public struct BlockDefinition: Identifiable {
+public struct BlockDefinition: Identifiable, Sendable {
     public static let resultKey = "result"
 
     public var id: String
@@ -282,14 +305,14 @@ public struct BlockDefinition: Identifiable {
     /// A reporter block; the handler returns the value.
     public static func reporter(_ id: String, category: BlockCategory, title: String, inputs: [InputDefinition] = [],
                                 result: ValueType?, referenceKind: String? = nil,
-                                handler: @escaping (BlockInputs, RunContext) throws -> Value) -> BlockDefinition {
+                                handler: @escaping @Sendable (BlockInputs, RunContext) throws -> Value) -> BlockDefinition {
         BlockDefinition(id: id, shape: .reporter, category: category, title: title, inputs: inputs, result: result,
                         resultReferenceKind: referenceKind) { [resultKey: try handler($0, $1)] }
     }
 
     /// A predicate block; the handler returns the boolean.
     public static func predicate(_ id: String, category: BlockCategory, title: String, inputs: [InputDefinition] = [],
-                                 handler: @escaping (BlockInputs, RunContext) throws -> Bool) -> BlockDefinition {
+                                 handler: @escaping @Sendable (BlockInputs, RunContext) throws -> Bool) -> BlockDefinition {
         BlockDefinition(id: id, shape: .predicate, category: category, title: title, inputs: inputs, result: .bool) {
             [resultKey: .bool(try handler($0, $1))]
         }
@@ -297,6 +320,9 @@ public struct BlockDefinition: Identifiable {
 }
 
 /// Supplies the candidates of a reference picker. Implemented by the host.
+///
+/// The editor calls it **on the main actor only** (while building labels and while a picker is open), so an
+/// implementation may read main-actor state and need not be `Sendable`. The interpreter never calls it.
 public protocol ReferenceProvider {
     /// Objects of `kind` matching the search text (all of them for an empty text).
     func candidates(kind: String, matching: String) -> [ReferenceCandidate]
@@ -323,7 +349,7 @@ public struct ReferenceCandidate: Hashable, Sendable, Identifiable {
 
 /// The slots, outputs and title of one concrete block. For most blocks this is just its definition;
 /// `return` and `call script` take theirs from the script they return from or call.
-public struct BlockSignature {
+public struct BlockSignature: Sendable {
     public var title: [TitlePart]
     public var inputs: [InputDefinition]
     public var outputs: [OutputDefinition]
@@ -332,7 +358,9 @@ public struct BlockSignature {
 }
 
 /// The blocks available to scripts: the built-ins plus whatever the host registers.
-public struct Vocabulary {
+///
+/// A value, and `Sendable`: the same vocabulary may be handed to other tasks and used from several threads.
+public struct Vocabulary: Sendable {
     public private(set) var definitions: [BlockDefinition] = []
     private var index: [String: Int] = [:]
 

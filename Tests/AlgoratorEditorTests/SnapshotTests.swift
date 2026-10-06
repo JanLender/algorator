@@ -16,7 +16,8 @@ final class SnapshotTests: XCTestCase {
     private lazy var vocabulary = TicketVocabulary.make(directory: directory)
 
     private func engine(_ document: Document) -> LayoutEngine {
-        LayoutEngine(vocabulary: vocabulary, document: document, references: directory,
+        LayoutEngine(vocabulary: vocabulary, document: document,
+                     referenceLabels: ReferenceLabels(document: document, provider: directory),
                      timeZone: TimeZone(identifier: "Europe/Prague")!)
     }
 

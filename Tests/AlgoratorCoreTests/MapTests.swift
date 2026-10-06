@@ -306,12 +306,12 @@ final class MapSlotTests: XCTestCase {
 
     /// A host block with one map slot receives a variable number of named inputs, and may return a map.
     func testAHandlerReceivesAndReturnsMaps() {
-        var received: [OrderedMap] = []
+        let received = Locked<[OrderedMap]>([])
         let category = BlockCategory(id: "t", title: "T", color: BlockColor(hex: 0))
         let vocabulary = Vocabulary([
             .statement("t.run", category: category, title: "run with %params", inputs: [.map("params")],
                        outputs: [OutputDefinition("echo", .map)]) { inputs, _ in
-                received.append(inputs.map("params"))
+                received.update { $0.append(inputs.map("params")) }
                 return ["echo": .map(inputs.map("params").setting("seen", true))]
             },
         ])
@@ -327,7 +327,7 @@ final class MapSlotTests: XCTestCase {
         XCTAssertEqual(run(.literal(.text(#"{"x":[1,2]}"#))), .map(["x": .list([1, 2]), "seen": true]), "JSON object text is a map")
         XCTAssertEqual(run(.literal("not a map")), .map(["seen": true]))
         XCTAssertEqual(run(.empty), .map(["seen": true]), "an empty slot is the empty map")
-        XCTAssertEqual(received, [["a": 1, "b": "two"], ["x": .list([1, 2])], [:], [:]])
+        XCTAssertEqual(received.value, [["a": 1, "b": "two"], ["x": .list([1, 2])], [:], [:]])
     }
 
     func testTypeMismatchOnAMapSlotIsOnlyAWarning() {

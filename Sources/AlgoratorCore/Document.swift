@@ -40,7 +40,7 @@ public struct Document: Codable, Equatable, Sendable {
 }
 
 /// Why a document could not be loaded.
-public enum DocumentError: Error, Equatable {
+public enum DocumentError: Error, Equatable, Sendable {
     case unsupportedSchemaVersion(Int)
 }
 
