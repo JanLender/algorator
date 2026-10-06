@@ -225,7 +225,51 @@ extension Script {
     }
 }
 
+extension Block {
+    /// A copy with new ids for the block and everything nested in it.
+    public func withFreshIDs() -> Block {
+        var copy = self
+        copy.id = UUID().uuidString
+        copy.inputs = inputs.mapValues { input in
+            if case .reporter(let reporter) = input { return .reporter(reporter.withFreshIDs()) }
+            return input
+        }
+        copy.regions = regions.mapValues { $0.map { $0.withFreshIDs() } }
+        return copy
+    }
+}
+
+extension Vocabulary {
+    /// Every reference kind the vocabulary mentions, sorted.
+    public var referenceKinds: [String] {
+        var kinds = Set<String>()
+        for definition in definitions {
+            for input in definition.inputs {
+                if case .reference(let kind) = input.shape { kinds.insert(kind) }
+            }
+            kinds.formUnion(definition.outputs.compactMap(\.referenceKind))
+            if let kind = definition.resultReferenceKind { kinds.insert(kind) }
+        }
+        return kinds.sorted()
+    }
+}
+
 extension Document {
+    /// The document with a new, empty script appended. Its name does not clash with an existing one.
+    public func addingScript(id: String = UUID().uuidString) -> Document {
+        var copy = self
+        var number = scripts.count + 1
+        while copy.scripts.contains(where: { $0.name == "Script \(number)" }) { number += 1 }
+        copy.scripts.append(Script(id: id, name: "Script \(number)"))
+        return copy
+    }
+
+    public func removingScript(id: String) -> Document {
+        var copy = self
+        copy.scripts.removeAll { $0.id == id }
+        return copy
+    }
+
     /// The document with one script replaced (matched by id).
     public func replacing(_ script: Script) -> Document {
         var copy = self

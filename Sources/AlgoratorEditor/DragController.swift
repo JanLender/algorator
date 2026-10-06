@@ -15,6 +15,9 @@ public struct DragState: Equatable {
     /// In canvas coordinates.
     public var pointer: CGPoint
     public var target: DropTarget?
+    /// True when the item was not taken out of the script (a fresh block from the palette, a copied chip):
+    /// abandoning the drag then changes nothing.
+    public var isNew = false
 
     public var ghostOrigin: CGPoint {
         CGPoint(x: pointer.x - grabOffset.width, y: pointer.y - grabOffset.height)
@@ -64,8 +67,27 @@ public struct DragController {
         case .slot?, .binding?, nil:
             return nil
         }
-        return begin(item, remaining: remaining, in: script,
-                     grabOffset: CGSize(width: point.x - origin.x, height: point.y - origin.y), at: point)
+        var state = begin(item, remaining: remaining, in: script,
+                          grabOffset: CGSize(width: point.x - origin.x, height: point.y - origin.y), at: point)
+        state.isNew = remaining == script
+        return state
+    }
+
+    /// Starts dragging a palette item into `script`: a copy of the prototype with fresh ids, or a variable chip.
+    public func begin(_ item: PaletteItem, into script: Script, grabOffset: CGSize, at point: CGPoint) -> DragState {
+        let vocabulary = engine.vocabulary
+        let dragged: DraggedItem
+        switch item.source {
+        case .variable(let name):
+            dragged = .variable(name, in: script, document: engine.document, vocabulary: vocabulary)
+        case .block(let prototype):
+            let block = prototype.withFreshIDs()
+            dragged = vocabulary[block.kind]?.shape.isStack ?? true ? .stack([block], vocabulary: vocabulary)
+                                                                    : .reporter(block, vocabulary: vocabulary)
+        }
+        var state = begin(dragged, remaining: script, in: script, grabOffset: grabOffset, at: point)
+        state.isNew = true
+        return state
     }
 
     /// Starts dragging an item that is not (or no longer) part of `remaining` — e.g. a fresh block.
@@ -95,5 +117,11 @@ public struct DragController {
     /// The script after the drop; `nil` when there is no target (the drag is cancelled and nothing changes).
     public func drop(_ state: DragState) -> Script? {
         state.target.flatMap { state.remaining.inserting(state.item.payload, at: $0) }
+    }
+
+    /// The script after throwing the dragged blocks away (a drop on the palette); `nil` when they were never
+    /// part of it.
+    public func discard(_ state: DragState) -> Script? {
+        state.isNew ? nil : state.remaining
     }
 }

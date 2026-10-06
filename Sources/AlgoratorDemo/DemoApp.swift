@@ -34,6 +34,14 @@ struct DemoApp: App {
         WindowGroup("Algorator — ticket triage demo") {
             AlgoratorEditorView(document: $model.document, vocabulary: model.vocabulary, references: model.directory)
                 .frame(minWidth: 900, minHeight: 560)
+                .toolbar {
+                    ToolbarItemGroup {
+                        Button("Empty Document") { model.document = Document() }
+                            .help("Start from nothing, to build the scripts by dragging")
+                        Button("Acceptance Scripts") { model.document = (try? AcceptanceDocument.load()) ?? Document() }
+                            .help("Load the two ready-made scripts")
+                    }
+                }
         }
     }
 }

@@ -134,6 +134,11 @@ public enum HitTest {
         return nil
     }
 
+    /// The palette item under the point.
+    public static func pick(at point: CGPoint, in palette: PaletteLayout) -> PaletteItem? {
+        palette.items.first { pick(at: point, in: $0.layout) != nil }
+    }
+
     /// The innermost thing under the point within one block (and everything nested in it).
     public static func pick(at point: CGPoint, in block: BlockLayout) -> Pick? {
         for piece in block.pieces where piece.frame.contains(point) {

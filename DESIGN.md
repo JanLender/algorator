@@ -88,9 +88,27 @@ Places where the spec was ambiguous, and what was chosen.
 | 61 | Where the logic lives | `Script` operations (pure), `HitTest` (pure), `DragController` (pure: begin / move / drop on a `DragState` value). The SwiftUI view converts pointer positions to canvas coordinates and calls these three. | Spec §9.4; everything but the gesture wiring is tested headless. |
 | 62 | Coordinates across panes | One named coordinate space on the editor; the canvas reports its origin in it, and the ghost is drawn in an overlay above the whole editor. | The same mechanism will carry a drag from the palette to the canvas in M4. |
 
+### M4 — palette, slot editors, pickers, scripts, delete, undo
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 63 | Undo mechanism | Every edit replaces the whole `Document` through `UndoBridge`, which registers the inverse with the window's `UndoManager`. | ⌘Z, ⇧⌘Z and the Edit menu work as in any Mac app, and a host's own undo stack (e.g. a document-based app) includes editor changes. Documents are small values, so snapshots are cheap. |
+| 64 | Granularity of undo | One step per drop, per committed literal, per picker choice, per "Done" in the script form. Typing inside a field is the field's own undo until committed. | Matches what the user thinks of as one action. |
+| 65 | Deleting | Dropping blocks taken from the script onto the palette deletes them (the palette turns red with a trash icon). Delete/Backspace deletes the **selected block only**; statements beneath it stay. | Dragging carries the stack, so the key is the way to remove one block from the middle. |
+| 66 | Selection | A click on a block selects it (yellow outline); a click on a slot opens its editor instead; a click elsewhere deselects. | Slots are much more often edited than their blocks selected. |
+| 67 | Slot editors | Text and number: an inline field over the slot (Return or clicking away commits, Esc cancels). Bool: flips on click. Date / time / timestamp: a popover with a date picker. Dropdown, reference, variable name, script: a popover list; the reference list is searchable through the host's `ReferenceProvider`. | Spec §7 and §9.2 with the least custom UI. |
+| 68 | A number field given non-numeric text | Kept as text (validation warns); blank becomes `0`. | Never silently discard what was typed. |
+| 69 | Date pickers | Work in whole minutes; a time slot stores `HH:mm`. | What the standard picker offers. |
+| 70 | Output bindings | Clicking a chip lists the script's variables, takes a new name, or unbinds ("Don’t store it"). | Spec §7. |
+| 71 | The entry block's data | Edited in a form ("Edit Script…": name, parameters, outputs, delete), not on the canvas. "New Script" opens it straight away. | The entry block is "not draggable, not deletable"; a small form is the simplest honest editor for a signature. |
+| 72 | Renaming a parameter or variable | Does not rename its uses; validation then flags them as never set. | A rename refactoring is out of scope for the PoC. |
+| 73 | Validation messages | A bubble next to the pointer lists the issues of the block under it. | A standard tooltip cannot be given a different text per region of one `Canvas`. |
+| 74 | Double-clicking a `call` block to open the callee | Not built. | Marked nice-to-have in the spec; a second tap gesture would delay every single click. |
+
 ## Known limitations
 
 - `LocalTime` has whole-second precision; a timestamp's fraction is dropped when taking its time of day.
+- Renaming a parameter or variable does not rename its uses (decision 72).
 - Picking a block up reflows the canvas at once (the remaining blocks close the gap), so what is under the pointer shifts.
 - A reporter cannot be dropped onto a slot that already holds a reporter (decision 55).
 - A local time that does not exist (DST gap) is resolved by `Calendar` (moved forward), not rejected.
