@@ -52,6 +52,14 @@ public final class TicketDirectory: ReferenceProvider {
             users: ["alice": "Alice", "bob": "Bob", "carol": "Carol", "ops": "Ops on call"])
     }
 
+    /// Back to the sample data relative to `now`, with no notifications and no labels.
+    public func reset(now: Date) {
+        let fresh = TicketDirectory.sample(now: now)
+        tickets = fresh.tickets
+        users = fresh.users
+        notifications = []
+    }
+
     public func notify(user: String, message: String) {
         notifications.append(Notification(user: user, message: message))
     }

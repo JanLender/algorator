@@ -140,3 +140,51 @@ final class DocumentTests: XCTestCase {
         XCTAssertNotEqual(Script(name: "S").id, Script(name: "S").id)
     }
 }
+
+import TicketDemo
+
+/// Spec §10: the acceptance document round-trips, and an unknown block kind survives a load and a save.
+final class AcceptanceRoundTripTests: XCTestCase {
+    func testAcceptanceDocumentRoundTripsThroughAFile() throws {
+        let document = try AcceptanceDocument.load()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("algorator-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try document.jsonData().write(to: url)
+        let reloaded = try Document(json: Data(contentsOf: url))
+        XCTAssertEqual(reloaded, document)
+        XCTAssertEqual(try reloaded.jsonData(), try document.jsonData())
+    }
+
+    func testUnknownKindSurvivesInsideTheAcceptanceDocument() throws {
+        // As if the host had dropped `ticket.addLabel` from its vocabulary: the block stays in the file,
+        // validation flags it, and the rest of the script is untouched.
+        var document = try AcceptanceDocument.load()
+        document.scripts[0].body[1].regions["then"]?[1].kind = "ticket.removedInV2"
+        let reloaded = try Document(json: try document.jsonData())
+        XCTAssertEqual(reloaded, document)
+        let kept = try XCTUnwrap(reloaded.scripts[0].body[1].regions["then"]?[1])
+        XCTAssertEqual(kept.kind, "ticket.removedInV2")
+        XCTAssertEqual(kept.inputs, ["label": .literal("escalated"), "ticket": .variable("ticket")])
+
+        let directory = TicketDirectory.sample(now: fixedNow)
+        let vocabulary = TicketVocabulary.make(directory: directory)
+        XCTAssertEqual(Validator.validate(reloaded, vocabulary: vocabulary),
+                       [Issue(scriptID: "escalate-ticket", blockID: "label", severity: .error,
+                              message: "Unknown block kind “ticket.removedInV2”")])
+        let result = Interpreter(document: reloaded, vocabulary: vocabulary, environment: env)
+            .run(scriptID: "escalate-ticket", arguments: ["ticket": ref("ticket", "T-1")])
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.trace.map(\.blockID), ["fetch", "decide", "notify-assignee", "label"])
+    }
+
+    func testDirectoryResetRestoresTheSampleData() {
+        let directory = TicketDirectory.sample(now: fixedNow)
+        directory.notify(user: "alice", message: "x")
+        directory.tickets["T-1"]?.labels.append("escalated")
+        directory.tickets["T-9"] = directory.tickets["T-1"]
+        directory.reset(now: fixedNow)
+        XCTAssertEqual(directory.notifications, [])
+        XCTAssertEqual(directory.tickets.keys.sorted(), ["T-1", "T-2", "T-3"])
+        XCTAssertEqual(directory.tickets["T-1"]?.labels, [])
+    }
+}

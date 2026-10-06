@@ -52,7 +52,9 @@ public struct AlgoratorEditorView: View {
     @Environment(\.undoManager) private var undoManager
     @StateObject private var undo = UndoBridge()
 
-    @State private var selectedScript: String?
+    /// Which script is shown: the host's binding when it gave one, otherwise the editor's own state.
+    private let externalScript: Binding<String?>?
+    @State private var internalScript: String?
     @State private var selectedCategory: String?
     @State private var selection: String?
     @State private var drag: DragState?
@@ -77,12 +79,23 @@ public struct AlgoratorEditorView: View {
         case palette(PaletteLayout)
     }
 
+    /// - Parameter selectedScript: the id of the script on the canvas. Pass a binding to follow or drive the
+    ///   selection (e.g. to run the script being shown); leave it out and the editor keeps track itself.
     public init(document: Binding<Document>, vocabulary: Vocabulary, references: ReferenceProvider? = nil,
-                metrics: LayoutMetrics = .standard) {
+                metrics: LayoutMetrics = .standard, selectedScript: Binding<String?>? = nil) {
+        self.externalScript = selectedScript
         self._document = document
         self.vocabulary = vocabulary
         self.references = references
         self.metrics = metrics
+    }
+
+    private var selectedScript: String? {
+        get { externalScript?.wrappedValue ?? internalScript }
+        nonmutating set {
+            internalScript = newValue
+            externalScript?.wrappedValue = newValue
+        }
     }
 
     private var script: Script? {

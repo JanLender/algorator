@@ -106,14 +106,68 @@ Places where the spec was ambiguous, and what was chosen.
 | 75 | Testing the gesture wiring | `swift run AlgoratorDemo --ui-test "x1,y1,x2,y2;…"` replays mouse drags inside the app's own window (in-process events, editor coordinates), prints the resulting script and quits. | The pure layers were fully tested and the app was still broken; this exercises the one layer the unit tests cannot reach, without moving the real pointer or needing permissions. |
 | 74 | Double-clicking a `call` block to open the callee | Not built. | Marked nice-to-have in the spec; a second tap gesture would delay every single click. |
 
+### M5 — demo, run panel, packaging
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 76 | Where the Run control lives | The demo owns the argument form and the Run button; the library offers a reusable `RunTraceView(result:)`. | Arguments are the host's business (where they come from, how they are picked); showing a trace is generic. |
+| 77 | How the demo knows which script to run | `AlgoratorEditorView` takes an optional `selectedScript` binding; without one it tracks the selection itself. | The smallest addition to the public surface that lets a host act on the visible script. |
+| 78 | State between demo runs | Every run starts from fresh sample tickets. | Runs are repeatable; "add label" does not pile up. |
+| 79 | Persistence in the demo | Open… / Save… read and write the document's JSON; nothing is saved automatically. | Shows the round-trip without inventing a document architecture. |
+| 80 | Consumer example | `Examples/Consumer` depends on the package by path, registers a block, validates, runs, round-trips, lays a script out and embeds `AlgoratorEditorView` in a view. It exits non-zero if any of that misbehaves. | Catches missing `public`s and wrong product wiring from the outside. |
+
+## What is verified, and how
+
+| Area | How |
+|---|---|
+| Coercion, compare, dates and times | Table-driven unit tests with a fixed time zone and clock. |
+| Document JSON | Byte-identical round-trip; hand-written JSON; unknown kinds; newer schema rejected; malformed input rejected. |
+| Built-in blocks, interpreter | Unit tests per block and per rule of spec §8, plus the acceptance scripts on fake data. |
+| Validation | Unit tests for every finding of spec §8, including the three named in §10. |
+| Layout | Unit tests against hand-computed frames with a fixed-width measurer. |
+| Rendering | 13 snapshot PNGs in `Snapshots/`. Eight were inspected by eye during development (both acceptance scripts, the dark variant of one, the shapes sheet, three palettes, both drag pictures). |
+| Hit-testing, editing operations, drag logic | Table-driven and scenario unit tests; no view involved. |
+| Undo / redo | Eleven kinds of edit round-tripped through a real `UndoManager`. |
+| Building the acceptance scripts from nothing | A unit test performs the same operations the editor performs, checking each drop against the slot rules, and compares the traces with the hand-written document. |
+| Drag gestures in the real window | `--ui-test` replays: palette → canvas, moving a stack, a reporter into a slot, deleting on the palette. The author also tried the demo by hand. |
+| Consumer package | `swift build` and `swift run Consumer` in `Examples/Consumer`. |
+
+**Not verified by any test or replay** (tried only by hand, or not at all):
+
+- the inline text field (focus, Return, Esc, committing on click-away);
+- the picker popovers and the date picker;
+- the Delete key (it needs the canvas to hold keyboard focus);
+- ⌘Z / ⇧⌘Z arriving from the Edit menu (the bridge behind them is tested);
+- the hover bubble with validation messages;
+- dragging after the canvas or the palette has been scrolled;
+- the Run panel's controls, and Open… / Save…;
+- light mode in the running app (snapshots only);
+- that on-screen text is exactly as wide as the layout measured it (AppKit measures, SwiftUI draws).
+
 ## Known limitations
 
-- `LocalTime` has whole-second precision; a timestamp's fraction is dropped when taking its time of day.
-- Renaming a parameter or variable does not rename its uses (decision 72).
-- Picking a block up reflows the canvas at once (the remaining blocks close the gap), so what is under the pointer shifts.
-- A reporter cannot be dropped onto a slot that already holds a reporter (decision 55).
+- **Loops are not built.** A host-defined C-block runs its handler and ignores its regions; this is where `for each` and `repeat` will hook in (decision 37).
+- **One script per canvas, no loose blocks.** Hence: a drop on nothing cancels (57), and a slot holding a reporter is not a drop target (55).
+- **Picking a block up reflows the canvas at once**, so what is under the pointer shifts; the drop indicator is a bar, not a Scratch-style gap (60).
+- **Renaming a parameter or variable does not rename its uses** (72). Variables have no declaration of their own: they exist because something binds or sets them.
+- **Variable types are flow-insensitive** (35): a name bound to outputs of different types is "unknown" and accepted everywhere.
+- **The entry block is edited in a form**, not on the canvas (71); double-click on a `call` block does not open the callee (74).
+- **Undo snapshots whole documents** (63). Fine at this size; a very large document would want per-edit inverses.
+- **Layout is recomputed on every pointer move** during a drag. Unmeasured; unnoticeable at the acceptance scripts' size.
+- **Text is truncated, never wrapped**: a literal longer than 32 characters is cut on the block (it is intact in the document and in the inline editor).
+- `LocalTime` has whole-second precision; a timestamp's fraction is dropped when taking its time of day. Timestamps are saved with millisecond precision (7).
 - A local time that does not exist (DST gap) is resolved by `Calendar` (moved forward), not rejected.
+- Unknown JSON *fields* are not preserved on save; unknown block *kinds* are (14).
+- No accessibility support: the canvas is one drawing, invisible to VoiceOver.
 
 ## Hardest problems
 
-_To be filled in from M2 onwards (nested C-block layout, drag and drop over nested containers)._
+1. **Nested C-block layout.** Solved by not solving it in SwiftUI: every block is laid out at the origin by a pure function and translated into place by its parent, so nesting is plain recursion, and the outline of a C-block is one path derived from its bars. The design choice that kept it simple is that a C-block does *not* grow with its children (40); otherwise every edit deep inside would resize every ancestor.
+
+2. **Drag and drop over nested containers.** The classic difficulties — dropping a block into itself, indices shifting as the source is removed, deciding between "end of the inner mouth" and "after the outer block" — went away with one move: pick-up *removes* the dragged blocks, and hit-testing and insertion both work on the remaining script (51). The inner/outer ambiguity is settled by scoring distance with a small weight on indentation (53).
+
+3. **The view layer lied while every test passed.** The pure layers (layout, hit-testing, operations, drag logic) had full unit coverage, and M3 was reported as done on that basis. In the real window nothing could be dragged: the canvas and palette positions were handed up as SwiftUI preferences and never arrived, so every pointer position was offset by some 400 points. It surfaced only when the author tried the palette in M4. The fix was small (62); the lesson was the `--ui-test` replay mode (75), which drives the actual window with in-process mouse events. The strict split of spec §9.4 made the bug easy to locate — the log showed correct logic fed wrong coordinates — but it does not make the thin wiring layer correct by itself.
+
+4. **Dynamic block signatures.** `return` and `call script` take their slots from a script, not from their definition. Letting the interpreter, validation and layout each work that out would have made them drift; one `signature(of:in:document:)` in the core (21) is used by all three.
+
+5. **Strict where the spec is strict, forgiving elsewhere.** Runtime never raises a type error, validation warns, and only shape and reference kind block a drop. The awkward corner is a variable of unknown type meeting a reference slot; refusing it would have made `set` variables unusable there, so "unknown" is allowed and "known wrong" is refused, identically in validation and in drops (58).
