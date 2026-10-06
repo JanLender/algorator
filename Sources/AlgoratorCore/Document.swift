@@ -3,7 +3,8 @@ import Foundation
 /// A set of named scripts; the persisted unit. Its JSON form is canonical and round-trips losslessly.
 public struct Document: Codable, Equatable, Sendable {
     /// The schema this build writes, and the newest it can read.
-    public static let currentSchemaVersion = 1
+    /// Version 2 added map values; a version 1 document is a valid version 2 document.
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var scripts: [Script]
@@ -27,11 +28,13 @@ public struct Document: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        // Older schemas would be migrated here.
-        guard schemaVersion <= Document.currentSchemaVersion else {
-            throw DocumentError.unsupportedSchemaVersion(schemaVersion)
+        let found = try container.decode(Int.self, forKey: .schemaVersion)
+        guard found <= Document.currentSchemaVersion else {
+            throw DocumentError.unsupportedSchemaVersion(found)
         }
+        // Migration: versions 1 and 2 differ only in what values may appear, so an older document needs no
+        // rewriting; it is simply saved as the current version from now on.
+        schemaVersion = Document.currentSchemaVersion
         scripts = try container.decode([Script].self, forKey: .scripts)
     }
 }

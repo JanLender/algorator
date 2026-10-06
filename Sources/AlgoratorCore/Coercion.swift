@@ -41,7 +41,8 @@ public enum Coercion {
     // MARK: Text
 
     /// Canonical text: integral numbers without `.0`, `true`/`false`, `yyyy-MM-dd`, `HH:mm[:ss]`,
-    /// ISO 8601 with the environment's zone offset, a reference's id, list items joined by newlines.
+    /// ISO 8601 with the environment's zone offset, a reference's id, list items joined by newlines, and a map
+    /// as compact JSON with its keys in entry order (`{"title":"High","n":2}`).
     public static func toText(_ value: Value, in environment: RunEnvironment) -> String {
         switch value {
         case .text(let text): return text
@@ -52,6 +53,7 @@ public enum Coercion {
         case .timestamp(let instant): return ISO.format(instant, in: environment.timeZone)
         case .reference(let reference): return reference.id
         case .list(let items): return items.map { toText($0, in: environment) }.joined(separator: "\n")
+        case .map(let map): return JSONText.write(map, in: environment)
         }
     }
 
@@ -64,13 +66,15 @@ public enum Coercion {
 
     // MARK: Bool
 
-    /// `""`, `"0"`, `"false"` (any case), `0`, an empty list and an empty reference id are false; everything else is true.
+    /// `""`, `"0"`, `"false"` (any case), `0`, an empty list, an empty map and an empty reference id are false;
+    /// everything else is true.
     public static func toBool(_ value: Value) -> Bool {
         switch value {
         case .bool(let bool): return bool
         case .text(let text): return !(text.isEmpty || text == "0" || text.lowercased() == "false")
         case .number(let number): return number != 0
         case .list(let items): return !items.isEmpty
+        case .map(let map): return !map.isEmpty
         case .reference(let reference): return !reference.id.isEmpty
         case .date, .time, .timestamp: return true
         }
@@ -124,6 +128,21 @@ public enum Coercion {
         ISO.instant(date, time, in: environment.timeZone)
     }
 
+    // MARK: Map
+
+    /// A map as is; text that is a valid JSON object is parsed (arrays become lists, objects maps, `null` the
+    /// empty value); anything else is the empty map.
+    ///
+    /// `toMap(.text(toText(map)))` gives the map back when its values survive JSON (text, number, bool, list,
+    /// map). Dates, times, timestamps and references come back as text.
+    public static func toMap(_ value: Value) -> OrderedMap {
+        switch value {
+        case .map(let map): return map
+        case .text(let text): return JSONText.readObject(text) ?? OrderedMap()
+        default: return OrderedMap()
+        }
+    }
+
     // MARK: List, reference
 
     /// A list as is; empty text is the empty list; any other value is a one-item list.
@@ -155,20 +174,31 @@ public enum Coercion {
         case .timestamp: return toTimestamp(value, in: environment).map(Value.timestamp) ?? .empty
         case .reference: return .reference(toReference(value, kind: referenceKind ?? "", in: environment))
         case .list: return .list(toList(value))
+        case .map: return .map(toMap(value))
         }
     }
 
     // MARK: Compare
 
     /// Orders two values: chronologically when either is temporal and the other converts, numerically when
-    /// both are numeric, references by kind and id, otherwise as case-insensitive text.
+    /// both are numeric, references by kind and id, otherwise as case-insensitive text. Two maps are equal when
+    /// they have the same keys with `compare`-equal values, in any order.
     public static func compare(_ a: Value, _ b: Value, in environment: RunEnvironment) -> ComparisonResult {
         if let result = temporalCompare(a, b, in: environment) { return result }
         if case .reference(let x) = a, case .reference(let y) = b {
             return x.kind == y.kind ? order(x.id, y.id) : order(x.kind, y.kind)
         }
         if let x = numeric(a), let y = numeric(b) { return order(x, y) }
-        return toText(a, in: environment).compare(toText(b, in: environment), options: .caseInsensitive)
+        let textA = toText(a, in: environment), textB = toText(b, in: environment)
+        guard case .map(let x) = a, case .map(let y) = b else {
+            return textA.compare(textB, options: .caseInsensitive)
+        }
+        if x.count == y.count, x.entries.allSatisfy({ entry in y[entry.key].map { equal(entry.value, $0, in: environment) } ?? false }) {
+            return .orderedSame
+        }
+        // Different maps order by their text; when only letter case tells them apart (keys are exact), by that.
+        let result = textA.compare(textB, options: .caseInsensitive)
+        return result == .orderedSame ? order(textA, textB) : result
     }
 
     /// `compare(a, b) == .orderedSame`.

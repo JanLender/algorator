@@ -2,7 +2,7 @@ import Foundation
 
 /// The closed set of value types a slot, parameter or result can declare.
 public enum ValueType: String, Codable, Sendable, CaseIterable {
-    case text, number, bool, date, time, timestamp, reference, list
+    case text, number, bool, date, time, timestamp, reference, list, map
 }
 
 /// An opaque id of a host object plus its kind (`"ticket"`, `"user"`, …).
@@ -27,6 +27,8 @@ public enum Value: Hashable, Sendable {
     case timestamp(Date)
     case reference(Reference)
     case list([Value])
+    /// An ordered map of named values.
+    case map(OrderedMap)
 
     /// What an unset variable reads as: the empty text.
     public static let empty = Value.text("")
@@ -41,6 +43,7 @@ public enum Value: Hashable, Sendable {
         case .timestamp: return .timestamp
         case .reference: return .reference
         case .list: return .list
+        case .map: return .map
         }
     }
 }
@@ -54,10 +57,11 @@ extension Value: ExpressibleByStringLiteral, ExpressibleByIntegerLiteral, Expres
 }
 
 // JSON form: a single-key object naming the type, e.g. {"text": "high"}, {"date": "2026-10-04"},
-// {"timestamp": "2026-10-04T10:00:00Z"}, {"reference": {"kind": "ticket", "id": "T-1"}}.
+// {"timestamp": "2026-10-04T10:00:00Z"}, {"reference": {"kind": "ticket", "id": "T-1"}},
+// {"map": [{"key": "title", "value": {"text": "x"}}]}.
 extension Value: Codable {
     private enum CodingKeys: String, CodingKey {
-        case text, number, bool, date, time, timestamp, reference, list
+        case text, number, bool, date, time, timestamp, reference, list, map
     }
 
     public init(from decoder: Decoder) throws {
@@ -85,6 +89,7 @@ extension Value: Codable {
             self = .timestamp(instant)
         case .reference: self = .reference(try container.decode(Reference.self, forKey: key))
         case .list: self = .list(try container.decode([Value].self, forKey: key))
+        case .map: self = .map(try container.decode(OrderedMap.self, forKey: key))
         }
     }
 
@@ -100,6 +105,7 @@ extension Value: Codable {
         case .timestamp(let instant): try container.encode(ISO.format(instant, in: ISO.utc, zulu: true), forKey: .timestamp)
         case .reference(let reference): try container.encode(reference, forKey: .reference)
         case .list(let items): try container.encode(items, forKey: .list)
+        case .map(let map): try container.encode(map, forKey: .map)
         }
     }
 }

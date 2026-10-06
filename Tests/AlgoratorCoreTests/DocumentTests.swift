@@ -110,9 +110,9 @@ final class DocumentTests: XCTestCase {
     }
 
     func testRejectsNewerSchemaVersion() {
-        let json = Data(#"{ "schemaVersion": 2, "scripts": [] }"#.utf8)
+        let json = Data(#"{ "schemaVersion": 3, "scripts": [] }"#.utf8)
         XCTAssertThrowsError(try Document(json: json)) { error in
-            XCTAssertEqual(error as? DocumentError, .unsupportedSchemaVersion(2))
+            XCTAssertEqual(error as? DocumentError, .unsupportedSchemaVersion(3))
         }
     }
 

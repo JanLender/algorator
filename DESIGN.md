@@ -116,12 +116,28 @@ Places where the spec was ambiguous, and what was chosen.
 | 79 | Persistence in the demo | Open… / Save… read and write the document's JSON; nothing is saved automatically. | Shows the round-trip without inventing a document architecture. |
 | 80 | Consumer example | `Examples/Consumer` depends on the package by path, registers a block, validates, runs, round-trips, lays a script out and embeds `AlgoratorEditorView` in a view. It exits non-zero if any of that misbehaves. | Catches missing `public`s and wrong product wiring from the outside. |
 
+### M6 — maps: the value (SPEC-maps.md)
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 81 | Representation of `OrderedMap` | An array of `(key, value)` entries with linear lookup. `set` replaces in place or appends; `setting` / `removing` return a new map. | Maps here are tiny; an array is the order. No index to keep in sync. |
+| 82 | What `==` means on a map | Swift's `==` and `hashValue` are exact, **including entry order**. `Coercion.compare` (and so the `=` block) ignores order. | A `Hashable` value must not call two differently ordered maps equal while hashing them apart; the spec asks for order-insensitive equality only in `compare`. |
+| 83 | JSON text for `toText` / `toMap` | A small hand-written reader and writer (`JSONText`), not `JSONSerialization`. | Foundation's JSON objects lose key order, and cannot reliably tell `true` from `1`. |
+| 84 | `toText` of values JSON cannot express | Dates, times, timestamps (in the environment's zone, as everywhere) and references become strings; a non-finite number becomes `null`. | Spec §2.2; `null` reads back as the empty value. |
+| 85 | What counts as "valid JSON object" text for `toMap` | The **whole** text (surrounding whitespace allowed) must be one object. Trailing commas, single quotes, bare keys, raw control characters in strings, lone surrogates and numbers beyond `Double` are invalid. Nesting deeper than 200 is refused. A repeated key keeps its first position and takes its last value. | Strict parsing keeps "is this text a map?" predictable; the depth limit protects the stack from hostile input. |
+| 86 | Ordering of two **different** maps | By their `toText`, case-insensitively, then exactly when only letter case tells them apart. This is plain text order: `{"a":1,"b":2}` sorts *before* `{"a":1}`. | Spec §2.2 ("order by `toText`"). Only equality of maps is meaningful; the order merely has to be total and stable. |
+| 87 | A map against a non-map | Text against text, like any other non-numeric, non-temporal pair. So a map equals its own JSON text, and a one-item list holding a map equals that map. | Spec §2.2; no special case. |
+| 88 | `toMap` and the environment | `toMap` takes no `RunEnvironment`. | Parsing JSON involves no time zone. |
+| 89 | Schema version 2 | Reading accepts 1 and 2. A version 1 document needs no rewriting (version 2 only adds a value type); once loaded it **is** version 2 and is saved as such. Version 3 and above are rejected. | Spec §2.3. Keeping `schemaVersion: 1` in memory would let a document with maps be saved under a version that cannot hold them. |
+| 90 | Malformed map in a document | A `map` that is not an array of `{key, value}` objects fails to load, like any other malformed value. Duplicate keys do not fail (last wins). | Spec §2.3 asks for leniency on duplicates only. |
+
 ## What is verified, and how
 
 | Area | How |
 |---|---|
 | Coercion, compare, dates and times | Table-driven unit tests with a fixed time zone and clock. |
 | Document JSON | Byte-identical round-trip; hand-written JSON; unknown kinds; newer schema rejected; malformed input rejected. |
+| Maps (M6) | `OrderedMap` semantics (replace in place, append, remove, duplicates, value semantics under copy); every coercion rule of SPEC-maps §2.2 table-driven, including the text round-trip and 27 kinds of invalid JSON; maps in documents (pairs array, nested, byte-identical, duplicate keys, malformed); a version 1 document loads; a handler receiving and returning maps. |
 | Built-in blocks, interpreter | Unit tests per block and per rule of spec §8, plus the acceptance scripts on fake data. |
 | Validation | Unit tests for every finding of spec §8, including the three named in §10. |
 | Layout | Unit tests against hand-computed frames with a fixed-width measurer. |

@@ -105,6 +105,12 @@ public struct InputDefinition: Hashable, Sendable {
         InputDefinition(name: name, shape: .reference(kind: kind), types: [.reference], editor: .reference)
     }
 
+    /// A round slot expecting a map: it has no literal editor, so it takes a variable or a reporter. This is
+    /// how a block receives a variable number of named inputs; the handler reads it with `inputs.map(name)`.
+    public static func map(_ name: String) -> InputDefinition {
+        InputDefinition(name: name, type: .map, referenceKind: nil)
+    }
+
     /// A text slot restricted to fixed options; starts on the first.
     public static func dropdown(_ name: String, options: [String]) -> InputDefinition {
         InputDefinition(name: name, types: [.text], defaultValue: options.first.map(Value.text), editor: .dropdown(options))
@@ -122,7 +128,7 @@ public struct InputDefinition: Hashable, Sendable {
         case .time: editor = .time
         case .timestamp: editor = .timestamp
         case .reference: editor = .reference
-        case .list: editor = .none
+        case .list, .map: editor = .none
         }
         self.init(name: name, label: label, shape: type == .reference ? .reference(kind: referenceKind ?? "") : .value,
                   types: [type], defaultValue: defaultValue ?? fallback, editor: editor)
@@ -189,6 +195,8 @@ public struct BlockInputs {
     public func time(_ name: String) -> LocalTime? { Coercion.toTime(self[name], in: environment) }
     public func timestamp(_ name: String) -> Date? { Coercion.toTimestamp(self[name], in: environment) }
     public func list(_ name: String) -> [Value] { Coercion.toList(self[name]) }
+    /// The map in the slot; anything that is not a map (or JSON object text) is the empty map.
+    public func map(_ name: String) -> OrderedMap { Coercion.toMap(self[name]) }
     /// The reference in the slot; a non-reference value becomes a reference of the slot's declared kind.
     public func reference(_ name: String) -> Reference {
         Coercion.toReference(self[name], kind: referenceKinds[name] ?? "", in: environment)
