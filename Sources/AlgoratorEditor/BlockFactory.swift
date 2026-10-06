@@ -11,11 +11,8 @@ public enum BlockFactory {
         if let calleeID { block.inputs[BuiltIn.scriptInput] = .literal(.text(calleeID)) }
         guard let signature = vocabulary.signature(of: block, in: script, document: document) else { return block }
         for slot in signature.inputs where block.inputs[slot.name] == nil {
-            guard let value = slot.defaultValue, slot.shape == .value else { continue }
-            switch slot.editor {
-            case .none, .variable, .script, .reference: continue
-            default: block.inputs[slot.name] = .literal(value)
-            }
+            let input = defaultInput(slot)
+            if input != .empty { block.inputs[slot.name] = input }
         }
         // Outputs start bound to variables of their own names, so a dropped block is useful at once.
         for output in signature.outputs { block.bindings[output.name] = output.name }

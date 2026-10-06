@@ -71,9 +71,28 @@ Places where the spec was ambiguous, and what was chosen.
 | 49 | Dark mode | Blocks keep their colours; only the canvas background follows the system. | As in Scratch; block colours carry meaning. |
 | 50 | Snapshots | `SnapshotTests` render through `ImageRenderer` into `Snapshots/` (committed), using the same `BlockRenderer` as the on-screen `Canvas`. | The pictures can be reviewed without running anything. |
 
+### M3 — editing operations, hit-testing, drag and drop
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 51 | How a move avoids dropping a block into itself | Picking up **removes** the dragged blocks; hit-testing runs against the layout of the *remaining* script, and the drop inserts into that. `moving` = `removing` + `inserting`. | No index fix-ups and no "is the target inside the dragged subtree" check: the subtree is simply not there. |
+| 52 | Which point is hit-tested | A stack snaps by the **top-left corner of the dragged stack** (puzzle-piece feel). A reporter or variable goes into the slot **under the pointer**. | A wide reporter grabbed at its right end should land where you point. |
+| 53 | Snapping of stacks | The nearest insertion point within 28 pt vertically and −40…+120 pt horizontally of the region's left edge; score `|dy| + 0.3·|dx|`, so indentation picks between "end of the mouth" and "after the C-block". Anywhere below the script appends to it. | Forgiving, and still deterministic enough to table-test. |
+| 54 | Caps | Nothing may follow a cap: no insertion after one in a region, and a dragged stack that ends in a cap only fits at the end of a region. | Otherwise unreachable blocks could be built by dragging. |
+| 55 | Dropping onto an occupied slot | A slot holding a literal, a variable chip or nothing is a target (its content is replaced). A slot holding a **reporter is not**: drag that reporter out first. | There is no free-floating workspace for an ejected reporter to land in, and silently discarding a whole expression is too destructive. |
+| 56 | What a slot is left with when its reporter or variable is dragged out | Its default literal if it is typeable, otherwise empty (`BlockFactory.emptyInput`). | Same state as a freshly created block. |
+| 57 | Dropping nowhere | Cancels: the script is unchanged. (Deleting by dropping on the palette comes in M4.) | One script per canvas means there is nowhere for loose blocks to stay. |
+| 58 | Reference-kind check on drop | A reporter or variable whose type is statically **unknown** is accepted by a reference slot; a known wrong kind or a known non-reference type is refused. Same rule as validation. | A `set` variable has no type; refusing it would make such variables unusable. |
+| 59 | Parameter chips on the entry block | Draggable; dragging one **copies** it. | As in Scratch's `define` block. |
+| 60 | Drop indicator | A blue bar at the insertion point, or a blue outline round the target slot. The canvas does not open a gap. | Simple and unambiguous; a Scratch-style gap would need a second layout per pointer move. |
+| 61 | Where the logic lives | `Script` operations (pure), `HitTest` (pure), `DragController` (pure: begin / move / drop on a `DragState` value). The SwiftUI view converts pointer positions to canvas coordinates and calls these three. | Spec §9.4; everything but the gesture wiring is tested headless. |
+| 62 | Coordinates across panes | One named coordinate space on the editor; the canvas reports its origin in it, and the ghost is drawn in an overlay above the whole editor. | The same mechanism will carry a drag from the palette to the canvas in M4. |
+
 ## Known limitations
 
 - `LocalTime` has whole-second precision; a timestamp's fraction is dropped when taking its time of day.
+- Picking a block up reflows the canvas at once (the remaining blocks close the gap), so what is under the pointer shifts.
+- A reporter cannot be dropped onto a slot that already holds a reporter (decision 55).
 - A local time that does not exist (DST gap) is resolved by `Calendar` (moved forward), not rejected.
 
 ## Hardest problems

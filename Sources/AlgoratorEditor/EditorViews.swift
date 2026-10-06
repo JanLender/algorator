@@ -5,15 +5,20 @@ import AlgoratorCore
 public struct ScriptCanvasView: View {
     public var tree: LayoutTree
     public var renderer: BlockRenderer
+    public var indicator: DropIndicator?
 
-    public init(tree: LayoutTree, renderer: BlockRenderer = BlockRenderer()) {
+    public init(tree: LayoutTree, renderer: BlockRenderer = BlockRenderer(), indicator: DropIndicator? = nil) {
         self.tree = tree
         self.renderer = renderer
+        self.indicator = indicator
     }
 
     public var body: some View {
-        Canvas { context, _ in renderer.draw(tree, in: &context) }
-            .frame(width: tree.size.width, height: tree.size.height)
+        Canvas { context, _ in
+            renderer.draw(tree, in: &context)
+            if let indicator { renderer.draw(indicator, in: &context) }
+        }
+        .frame(width: tree.size.width, height: tree.size.height)
     }
 }
 
@@ -34,6 +39,9 @@ public struct PaletteCanvasView: View {
 }
 
 /// The editor: category tabs and palette on the left, one script on a canvas on the right.
+///
+/// The view holds no editing logic. It turns gestures into calls on `DragController` (which uses the pure
+/// `HitTest` and `Script` operations) and draws what comes back.
 public struct AlgoratorEditorView: View {
     @Binding private var document: Document
     private let vocabulary: Vocabulary
@@ -42,6 +50,11 @@ public struct AlgoratorEditorView: View {
 
     @State private var selectedScript: String?
     @State private var selectedCategory: String?
+    @State private var drag: DragState?
+    /// The canvas content's origin in the editor's coordinate space (changes as the canvas scrolls).
+    @State private var canvasOrigin = CGPoint.zero
+
+    private static let space = "algorator.editor"
 
     public init(document: Binding<Document>, vocabulary: Vocabulary, references: ReferenceProvider? = nil,
                 metrics: LayoutMetrics = .standard) {
@@ -81,16 +94,58 @@ public struct AlgoratorEditorView: View {
                 scriptSelector
                 Divider()
                 TopLeadingScrollView {
-                    if let script {
-                        let issues = Validator.validate(script, in: document, vocabulary: vocabulary)
-                        ScriptCanvasView(tree: engine.layout(script),
-                                         renderer: BlockRenderer(metrics: metrics, issues: BlockRenderer.worstIssues(issues)))
-                    }
+                    if let script { canvas(script) }
                 }
                 .background(Color(nsColor: .textBackgroundColor))
             }
         }
+        .coordinateSpace(name: Self.space)
+        .onPreferenceChange(CanvasOriginKey.self) { canvasOrigin = $0 }
+        .overlay { ghost }
     }
+
+    // MARK: Canvas and dragging
+
+    private func canvas(_ script: Script) -> some View {
+        // While dragging, the canvas shows the script without the dragged blocks.
+        let shown = drag?.remaining ?? script
+        let issues = Validator.validate(shown, in: document, vocabulary: vocabulary)
+        return ScriptCanvasView(tree: drag?.tree ?? engine.layout(script),
+                                renderer: BlockRenderer(metrics: metrics, issues: BlockRenderer.worstIssues(issues)),
+                                indicator: drag?.indicator)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: CanvasOriginKey.self, value: proxy.frame(in: .named(Self.space)).origin)
+            })
+            .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
+                .onChanged { value in
+                    let controller = DragController(engine: engine)
+                    if drag == nil { drag = controller.begin(at: onCanvas(value.startLocation), in: script) }
+                    if let state = drag { drag = controller.move(state, to: onCanvas(value.location)) }
+                }
+                .onEnded { _ in
+                    if let state = drag, let edited = DragController(engine: engine).drop(state) {
+                        document = document.replacing(edited)
+                    }
+                    drag = nil
+                })
+    }
+
+    private func onCanvas(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x - canvasOrigin.x, y: point.y - canvasOrigin.y)
+    }
+
+    /// The dragged blocks, floating above the whole editor.
+    @ViewBuilder private var ghost: some View {
+        if let drag {
+            Canvas { context, _ in
+                let origin = CGPoint(x: canvasOrigin.x + drag.ghostOrigin.x, y: canvasOrigin.y + drag.ghostOrigin.y)
+                BlockRenderer(metrics: metrics).draw(ghost: drag.ghost, at: origin, in: &context)
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: Chrome
 
     private var categoryTabs: some View {
         ScrollView {
@@ -129,6 +184,11 @@ public struct AlgoratorEditorView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
+}
+
+private struct CanvasOriginKey: PreferenceKey {
+    static let defaultValue = CGPoint.zero
+    static func reduce(value: inout CGPoint, nextValue: () -> CGPoint) { value = nextValue() }
 }
 
 /// Scrolls both ways and pins content smaller than the viewport to the top-left (a plain two-axis

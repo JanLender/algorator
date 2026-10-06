@@ -33,6 +33,31 @@ public struct BlockRenderer {
         for item in palette.items { draw(item.layout, in: &context) }
     }
 
+    /// Where a pending drop will land: a bar between statements, or a glowing slot.
+    public func draw(_ indicator: DropIndicator, in context: inout GraphicsContext) {
+        switch indicator {
+        case .insertion(let frame):
+            let bar = Path(roundedRect: frame, cornerRadius: frame.height / 2)
+            context.fill(bar, with: .color(BlockRenderer.indicator))
+            context.stroke(bar, with: .color(.white), lineWidth: 1)
+        case .slot(let slot):
+            let outline = BlockPaths.slot(slot, metrics)
+            context.stroke(outline, with: .color(.white), lineWidth: 4)
+            context.stroke(outline, with: .color(BlockRenderer.indicator), lineWidth: 2)
+        }
+    }
+
+    /// Blocks laid out from the origin (a dragged stack), drawn lifted off the canvas at `origin`.
+    public func draw(ghost blocks: [BlockLayout], at origin: CGPoint, in context: inout GraphicsContext) {
+        var lifted = context
+        lifted.translateBy(x: origin.x, y: origin.y)
+        lifted.opacity = 0.92
+        lifted.addFilter(.shadow(color: .black.opacity(0.35), radius: 5, y: 3))
+        lifted.drawLayer { layer in
+            for block in blocks { draw(block, in: &layer) }
+        }
+    }
+
     private func draw(_ entry: EntryLayout, in context: inout GraphicsContext) {
         let color = Vocabulary.control.color
         let path = BlockPaths.hat(entry.frame, metrics)
@@ -139,6 +164,7 @@ public struct BlockRenderer {
 
     static let fieldText = Color(.sRGB, red: 0.34, green: 0.37, blue: 0.46)
     static let error = Color(.sRGB, red: 0.86, green: 0.15, blue: 0.15)
+    static let indicator = Color(.sRGB, red: 0.1, green: 0.45, blue: 1.0)
     static let warning = Color(.sRGB, red: 1.0, green: 0.8, blue: 0.0)
 }
 

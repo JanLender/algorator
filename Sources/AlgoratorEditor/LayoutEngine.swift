@@ -117,6 +117,11 @@ public struct LayoutEngine {
         return layout
     }
 
+    /// Statements stacked from the origin, as they are drawn while being dragged.
+    func stackLayouts(_ blocks: [Block], in script: Script) -> [BlockLayout] {
+        region(blocks, owner: nil, name: "drag", in: script, at: .zero, minWidth: 0).blocks
+    }
+
     // MARK: Reporters
 
     /// A block in a slot, at the origin.

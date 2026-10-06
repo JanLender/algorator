@@ -57,6 +57,39 @@ final class SnapshotTests: XCTestCase {
         }
     }
 
+    /// A drag in progress, as the editor composes it: the remaining script, the drop indicator, the ghost.
+    func testDragging() throws {
+        let document = try AcceptanceDocument.load()
+        let controller = DragController(engine: engine(document))
+        let tree = engine(document).layout(document.scripts[0])
+        let size = CGSize(width: tree.size.width + 60, height: tree.size.height)
+
+        // "add label" and the return beneath it, lifted and about to snap back under "notify".
+        let label = try XCTUnwrap(tree.allBlocks.first { $0.id == "label" })
+        var stack = try XCTUnwrap(controller.begin(at: CGPoint(x: label.frame.minX + 8, y: label.frame.minY + 8),
+                                                   in: document.scripts[0]))
+        stack = controller.move(stack, to: CGPoint(x: label.frame.minX + 44, y: label.frame.minY + 24))
+        XCTAssertEqual(stack.target, .region(owner: "decide", name: "then", index: 1))
+        try write("drag-stack", size: size) { context in
+            BlockRenderer().draw(stack.tree, in: &context)
+            if let indicator = stack.indicator { BlockRenderer().draw(indicator, in: &context) }
+            BlockRenderer().draw(ghost: stack.ghost, at: stack.ghostOrigin, in: &context)
+        }
+
+        // The "join" reporter, hovering over the literal "escalated".
+        let join = try XCTUnwrap(tree.allBlocks.first { $0.id == "message" })
+        var reporter = try XCTUnwrap(controller.begin(at: CGPoint(x: join.frame.minX + 12, y: join.frame.midY),
+                                                      in: document.scripts[0]))
+        let literal = try XCTUnwrap(reporter.tree.allBlocks.first { $0.id == "label" }?.slots.first)
+        reporter = controller.move(reporter, to: CGPoint(x: literal.frame.midX, y: literal.frame.midY))
+        XCTAssertEqual(reporter.target, .slot(blockID: "label", name: "label"))
+        try write("drag-reporter", size: size) { context in
+            BlockRenderer().draw(reporter.tree, in: &context)
+            if let indicator = reporter.indicator { BlockRenderer().draw(indicator, in: &context) }
+            BlockRenderer().draw(ghost: reporter.ghost, at: reporter.ghostOrigin, in: &context)
+        }
+    }
+
     /// Every shape and slot state in one picture, including broken and invalid blocks.
     func testShapesAndStates() throws {
         func rep(_ kind: String, _ inputs: [String: Input] = [:]) -> Input { .reporter(Block(kind: kind, inputs: inputs)) }

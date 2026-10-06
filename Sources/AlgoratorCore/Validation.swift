@@ -34,13 +34,25 @@ public enum Validator {
         pass.walk(script.body, &bound)
         return pass.issues
     }
+
+    /// What is statically known about each variable of a script (parameters, output bindings, `set` targets).
+    public static func variableTypes(of script: Script, in document: Document, vocabulary: Vocabulary) -> [String: VariableType] {
+        var pass = Pass(script: script, document: document, vocabulary: vocabulary)
+        pass.declare(script.body)
+        return pass.variables
+    }
 }
 
 /// What is statically known about a variable. A `nil` type means "unknown" (written by `set`, or by
 /// outputs of differing types).
-private struct VariableType: Equatable {
-    var type: ValueType?
-    var referenceKind: String?
+public struct VariableType: Equatable, Sendable {
+    public var type: ValueType?
+    public var referenceKind: String?
+
+    public init(type: ValueType? = nil, referenceKind: String? = nil) {
+        self.type = type
+        self.referenceKind = referenceKind
+    }
 }
 
 private struct Pass {
