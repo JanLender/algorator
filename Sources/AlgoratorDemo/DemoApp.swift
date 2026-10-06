@@ -34,6 +34,9 @@ struct DemoApp: App {
         WindowGroup("Algorator — ticket triage demo") {
             AlgoratorEditorView(document: $model.document, vocabulary: model.vocabulary, references: model.directory)
                 .frame(minWidth: 900, minHeight: 560)
+                .onAppear {
+                    if let drags = UISelfTest.drags { UISelfTest.run(drags) { model.document } }
+                }
                 .toolbar {
                     ToolbarItemGroup {
                         Button("Empty Document") { model.document = Document() }

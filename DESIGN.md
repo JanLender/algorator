@@ -86,7 +86,7 @@ Places where the spec was ambiguous, and what was chosen.
 | 59 | Parameter chips on the entry block | Draggable; dragging one **copies** it. | As in Scratch's `define` block. |
 | 60 | Drop indicator | A blue bar at the insertion point, or a blue outline round the target slot. The canvas does not open a gap. | Simple and unambiguous; a Scratch-style gap would need a second layout per pointer move. |
 | 61 | Where the logic lives | `Script` operations (pure), `HitTest` (pure), `DragController` (pure: begin / move / drop on a `DragState` value). The SwiftUI view converts pointer positions to canvas coordinates and calls these three. | Spec §9.4; everything but the gesture wiring is tested headless. |
-| 62 | Coordinates across panes | One named coordinate space on the editor; the canvas reports its origin in it, and the ghost is drawn in an overlay above the whole editor. | The same mechanism will carry a drag from the palette to the canvas in M4. |
+| 62 | Coordinates across panes | One named coordinate space on the editor; the canvas and the palette report their frames in it (a `GeometryReader` with `onChange`), and the ghost is drawn in an overlay above the whole editor. | One mechanism for canvas drags, palette-to-canvas drags and the delete zone. A first version passed the frames up as SwiftUI preferences; they never arrived, so every pointer position was offset and no drag worked until the M4 fix. |
 
 ### M4 — palette, slot editors, pickers, scripts, delete, undo
 
@@ -103,6 +103,7 @@ Places where the spec was ambiguous, and what was chosen.
 | 71 | The entry block's data | Edited in a form ("Edit Script…": name, parameters, outputs, delete), not on the canvas. "New Script" opens it straight away. | The entry block is "not draggable, not deletable"; a small form is the simplest honest editor for a signature. |
 | 72 | Renaming a parameter or variable | Does not rename its uses; validation then flags them as never set. | A rename refactoring is out of scope for the PoC. |
 | 73 | Validation messages | A bubble next to the pointer lists the issues of the block under it. | A standard tooltip cannot be given a different text per region of one `Canvas`. |
+| 75 | Testing the gesture wiring | `swift run AlgoratorDemo --ui-test "x1,y1,x2,y2;…"` replays mouse drags inside the app's own window (in-process events, editor coordinates), prints the resulting script and quits. | The pure layers were fully tested and the app was still broken; this exercises the one layer the unit tests cannot reach, without moving the real pointer or needing permissions. |
 | 74 | Double-clicking a `call` block to open the callee | Not built. | Marked nice-to-have in the spec; a second tap gesture would delay every single click. |
 
 ## Known limitations

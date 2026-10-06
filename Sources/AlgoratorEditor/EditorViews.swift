@@ -121,9 +121,6 @@ public struct AlgoratorEditorView: View {
             }
         }
         .coordinateSpace(name: Self.space)
-        .onPreferenceChange(CanvasOriginKey.self) { canvasOrigin = $0 }
-        .onPreferenceChange(PaletteOriginKey.self) { paletteOrigin = $0 }
-        .onPreferenceChange(PaletteFrameKey.self) { paletteFrame = $0 }
         .overlay { ghost }
     }
 
@@ -155,14 +152,12 @@ public struct AlgoratorEditorView: View {
             if let script {
                 let palette = engine.palette(category: category, for: script)
                 PaletteCanvasView(palette: palette, renderer: BlockRenderer(metrics: metrics))
-                    .background(originReader(PaletteOriginKey.self))
+                    .background(frameReader { paletteOrigin = $0.origin })
                     .gesture(dragGesture(script, from: .palette(palette)))
             }
         }
         .background(Color(nsColor: .underPageBackgroundColor).opacity(0.35))
-        .background(GeometryReader { proxy in
-            Color.clear.preference(key: PaletteFrameKey.self, value: proxy.frame(in: .named(Self.space)))
-        })
+        .background(frameReader { paletteFrame = $0 })
         .overlay {
             // Blocks taken out of the script are thrown away when dropped here.
             if let drag, !drag.isNew, paletteFrame.contains(pointer) {
@@ -183,7 +178,7 @@ public struct AlgoratorEditorView: View {
         let issues = Validator.validate(shown, in: document, vocabulary: vocabulary)
         let renderer = BlockRenderer(metrics: metrics, issues: BlockRenderer.worstIssues(issues), selection: selection)
         return ScriptCanvasView(tree: drag?.tree ?? engine.layout(script), renderer: renderer, indicator: drag?.indicator)
-            .background(originReader(CanvasOriginKey.self))
+            .background(frameReader { canvasOrigin = $0.origin })
             .overlay(alignment: .topLeading) { inlineField(script) }
             .popover(item: $picker, attachmentAnchor: .rect(.rect(picker?.frame ?? .zero)), arrowEdge: .bottom) { request in
                 PickerPopover(request: request, script: script, document: document, references: references) { input in
@@ -231,9 +226,10 @@ public struct AlgoratorEditorView: View {
         }
     }
 
-    private func originReader<Key: PreferenceKey>(_ key: Key.Type) -> some View where Key.Value == CGPoint {
+    /// Reports a view's frame in the editor's coordinate space, now and whenever it changes (e.g. on scroll).
+    private func frameReader(_ report: @escaping (CGRect) -> Void) -> some View {
         GeometryReader { proxy in
-            Color.clear.preference(key: key, value: proxy.frame(in: .named(Self.space)).origin)
+            Color.clear.onChange(of: proxy.frame(in: .named(Self.space)), initial: true) { _, frame in report(frame) }
         }
     }
 
@@ -440,21 +436,6 @@ public struct AlgoratorEditorView: View {
         selection = nil
         showingSettings = true
     }
-}
-
-private struct CanvasOriginKey: PreferenceKey {
-    static let defaultValue = CGPoint.zero
-    static func reduce(value: inout CGPoint, nextValue: () -> CGPoint) { value = nextValue() }
-}
-
-private struct PaletteOriginKey: PreferenceKey {
-    static let defaultValue = CGPoint.zero
-    static func reduce(value: inout CGPoint, nextValue: () -> CGPoint) { value = nextValue() }
-}
-
-private struct PaletteFrameKey: PreferenceKey {
-    static let defaultValue = CGRect.zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
 }
 
 /// Scrolls both ways and pins content smaller than the viewport to the top-left (a plain two-axis
