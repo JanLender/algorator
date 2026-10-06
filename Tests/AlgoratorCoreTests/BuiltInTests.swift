@@ -13,7 +13,7 @@ final class BuiltInTests: XCTestCase {
     func testEveryBuiltInIsRegisteredOnce() {
         let ids = Vocabulary.builtIns.map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)
-        XCTAssertEqual(Vocabulary().categories.map(\.id), ["control", "variables", "operators", "time", "lists"])
+        XCTAssertEqual(Vocabulary().categories.map(\.id), ["control", "variables", "operators", "time", "lists", "maps"])
         XCTAssertEqual(Vocabulary(includeBuiltIns: false).definitions.count, 0)
     }
 

@@ -47,6 +47,7 @@ final class SnapshotTests: XCTestCase {
         try snapshot("escalate-ticket", document.scripts[0], in: document)
         try snapshot("escalate-ticket-dark", document.scripts[0], in: document, scheme: .dark)
         try snapshot("escalate-all-clear", document.scripts[1], in: document)
+        try snapshot("escalate-with-details", document.scripts[2], in: document)
     }
 
     func testPalettes() throws {

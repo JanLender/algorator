@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "scripts": [
     {
       "id": "escalate-ticket",
@@ -114,6 +114,69 @@
                 }
               }
             ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "escalate-with-details",
+      "name": "Escalate with details",
+      "parameters": [ { "name": "ticket", "type": "reference", "referenceKind": "ticket" } ],
+      "outputs": [ { "name": "escalated", "type": "bool" } ],
+      "body": [
+        {
+          "id": "fetch-details",
+          "kind": "ticket.fetch",
+          "inputs": { "ticket": { "variable": "ticket" } },
+          "bindings": { "title": "title", "priority": "priority", "assignee": "assignee" }
+        },
+        {
+          "id": "entry-title",
+          "kind": "map.setEntry",
+          "inputs": {
+            "key": { "literal": { "text": "title" } },
+            "name": { "literal": { "text": "details" } },
+            "value": { "variable": "title" }
+          }
+        },
+        {
+          "id": "entry-priority",
+          "kind": "map.setEntry",
+          "inputs": {
+            "key": { "literal": { "text": "priority" } },
+            "name": { "literal": { "text": "details" } },
+            "value": { "variable": "priority" }
+          }
+        },
+        {
+          "id": "entry-assignee",
+          "kind": "map.setEntry",
+          "inputs": {
+            "key": { "literal": { "text": "assignee" } },
+            "name": { "literal": { "text": "details" } },
+            "value": { "variable": "assignee" }
+          }
+        },
+        {
+          "id": "review",
+          "kind": "ticket.reviewDetails",
+          "inputs": { "details": { "variable": "details" } },
+          "bindings": { "reviewed": "reviewed" }
+        },
+        {
+          "id": "log",
+          "kind": "ticket.logDetails",
+          "inputs": { "details": { "variable": "reviewed" } }
+        },
+        {
+          "id": "return-reviewed",
+          "kind": "control.return",
+          "inputs": {
+            "escalated": { "reporter": {
+              "id": "was-reviewed",
+              "kind": "map.value",
+              "inputs": { "key": { "literal": { "text": "reviewed" } }, "map": { "variable": "reviewed" } }
+            } }
           }
         }
       ]

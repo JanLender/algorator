@@ -258,6 +258,7 @@ final class EditingSessionTests: XCTestCase {
         let directory = TicketDirectory.sample(now: Date(timeIntervalSince1970: 1_791_108_000))
         let vocabulary = TicketVocabulary.make(directory: directory)
         var document = Document().addingScript(id: "escalate-ticket").addingScript(id: "escalate-all-clear")
+            .addingScript(id: "escalate-with-details")
 
         // What "Edit Script…" does.
         document.scripts[0].name = "Escalate ticket"
@@ -265,6 +266,9 @@ final class EditingSessionTests: XCTestCase {
         document.scripts[0].outputs = [Param(name: "escalated", type: .bool)]
         document.scripts[1].name = "Escalate all-clear"
         document.scripts[1].parameters = [Param(name: "ticket", type: .reference, referenceKind: "ticket")]
+        document.scripts[2].name = "Escalate with details"
+        document.scripts[2].parameters = [Param(name: "ticket", type: .reference, referenceKind: "ticket")]
+        document.scripts[2].outputs = [Param(name: "escalated", type: .bool)]
 
         /// One drag from the palette, checked against the same rules the editor applies on drop.
         func drop(_ kind: String, calling callee: String? = nil, at target: DropTarget, into index: Int) throws -> String {
@@ -340,6 +344,32 @@ final class EditingSessionTests: XCTestCase {
             try type(message, into: tell, "message", of: 1)
         }
 
+        // Escalate with details (SPEC-maps §4): three `set entry` blocks in a row build the map.
+        /// Choosing a name in the "New variable" box of a variable picker.
+        func name(_ variable: String, in block: String, of index: Int) throws {
+            let script = document.scripts[index]
+            let owner = try XCTUnwrap(script.block(id: block))
+            XCTAssertEqual(vocabulary.signature(of: owner, in: script, document: document)?.input(BuiltIn.nameInput)?.editor, .variable)
+            document = document.replacing(try XCTUnwrap(script.settingInput(blockID: block, name: BuiltIn.nameInput,
+                                                                            to: .literal(.text(variable)))))
+        }
+        let fetchDetails = try drop("ticket.fetch", at: body(0), into: 2)
+        try chip("ticket", into: fetchDetails, "ticket", of: 2)
+        for (index, key) in ["title", "priority", "assignee"].enumerated() {
+            let entry = try drop(BuiltIn.setEntry, at: body(index + 1), into: 2)
+            try type(key, into: entry, "key", of: 2)
+            try name("details", in: entry, of: 2)
+            try chip(key, into: entry, "value", of: 2)
+        }
+        let review = try drop("ticket.reviewDetails", at: body(4), into: 2)
+        try chip("details", into: review, "details", of: 2)          // the map variable now has a chip
+        let logDetails = try drop("ticket.logDetails", at: body(5), into: 2)
+        try chip("reviewed", into: logDetails, "details", of: 2)
+        let done = try drop(BuiltIn.return, at: body(6), into: 2)
+        let wasReviewed = try drop("map.value", at: slot(done, "escalated"), into: 2)
+        try type("reviewed", into: wasReviewed, "key", of: 2)
+        try chip("reviewed", into: wasReviewed, "map", of: 2)
+
         // It validates, and behaves exactly like the hand-written document.
         XCTAssertEqual(Validator.validate(document, vocabulary: vocabulary), [])
         let environment = RunEnvironment(timeZone: utc, now: { Date(timeIntervalSince1970: 1_791_108_000) })
@@ -352,6 +382,15 @@ final class EditingSessionTests: XCTestCase {
             XCTAssertEqual(built.status, reference.status, ticket)
             XCTAssertEqual(built.trace.map(\.label), reference.trace.map(\.label), ticket)
             XCTAssertTrue(built.trace.allSatisfy(\.succeeded), ticket)
+
+            let builtDetails = Interpreter(document: document, vocabulary: vocabulary, environment: environment)
+                .run(scriptID: "escalate-with-details", arguments: arguments)
+            let referenceDetails = Interpreter(document: try AcceptanceDocument.load(), vocabulary: vocabulary, environment: environment)
+                .run(scriptID: AcceptanceDocument.detailsID, arguments: arguments)
+            XCTAssertEqual(builtDetails.status, .returned, ticket)
+            XCTAssertEqual(builtDetails.outputs, referenceDetails.outputs, ticket)
+            XCTAssertEqual(builtDetails.trace.map(\.label), referenceDetails.trace.map(\.label), ticket)
+            XCTAssertEqual(builtDetails.trace.count, 7, ticket)
         }
     }
 }

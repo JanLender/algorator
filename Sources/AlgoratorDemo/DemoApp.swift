@@ -23,6 +23,7 @@ final class DemoModel: ObservableObject {
     @Published var selectedScript: String?
     @Published var result: RunResult?
     @Published var notifications: [TicketDirectory.Notification] = []
+    @Published var log: [String] = []
     @Published var error: String?
 
     init() {
@@ -44,6 +45,7 @@ final class DemoModel: ObservableObject {
         directory.reset(now: Date())
         result = Interpreter(document: document, vocabulary: vocabulary).run(scriptID: script.id, arguments: arguments)
         notifications = directory.notifications
+        log = directory.log
     }
 
     func replaceDocument(_ new: Document) {
@@ -51,6 +53,7 @@ final class DemoModel: ObservableObject {
         selectedScript = nil
         result = nil
         notifications = []
+        log = []
     }
 
     // MARK: Files — the document's JSON is its persisted form
@@ -163,6 +166,12 @@ struct RunPanel: View {
                     ForEach(Array(model.notifications.enumerated()), id: \.offset) { _, notification in
                         Text("\(model.directory.users[notification.user] ?? notification.user): \(notification.message)")
                             .font(.system(size: 12))
+                    }
+                    if !model.log.isEmpty {
+                        Text("Log").font(.headline).padding(.top, 4)
+                        ForEach(Array(model.log.enumerated()), id: \.offset) { _, line in
+                            Text(line).font(.system(size: 12, design: .monospaced))
+                        }
                     }
                     Spacer(minLength: 0)
                 }

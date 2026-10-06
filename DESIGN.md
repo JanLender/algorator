@@ -131,12 +131,28 @@ Places where the spec was ambiguous, and what was chosen.
 | 89 | Schema version 2 | Reading accepts 1 and 2. A version 1 document needs no rewriting (version 2 only adds a value type); once loaded it **is** version 2 and is saved as such. Version 3 and above are rejected. | Spec §2.3. Keeping `schemaVersion: 1` in memory would let a document with maps be saved under a version that cannot hold them. |
 | 90 | Malformed map in a document | A `map` that is not an array of `{key, value}` objects fails to load, like any other malformed value. Duplicate keys do not fail (last wins). | Spec §2.3 asks for leniency on duplicates only. |
 
+### M7 — maps: blocks, demo, third acceptance script
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 91 | Who executes `set entry` / `remove entry` | The interpreter, like `set variable`: they write a variable, which a handler cannot do. They reuse the `name` slot and its `.variable` editor; `BuiltIn.setTarget` covers all three blocks. | One notion of "a block that names a variable it writes" for the interpreter, validation and the Variables tab. |
+| 92 | Type of a variable written by them | `map`. A variable that is *also* written by a plain `set` has no known type (35). | Spec §3; `set` can store anything. |
+| 93 | `set entry` on a variable that is not a map | Starts from `toMap` of it: the empty map — or, for JSON object text, the map it denotes. | Spec §3 says "`toMap(variable)`"; this is what `toMap` means everywhere else. |
+| 94 | Empty map slot on the reporters | Validation: an error ("“map” is empty"), as for any required slot without a default — drop `empty map` or a variable in. Run time: the empty map. | A map slot cannot hold a typed literal, so "required" keeps an accidental hole visible. |
+| 95 | Order of slots in the titles | As in the spec's table (`value of %key in %map`, `set entry %key of %variable to %value`). | They read as sentences. |
+| 96 | "Type names/colours for `map` wherever the other types appear" | Type *names* appear in the script form's type menu and in validation messages; `map` is there. Variable chips are not coloured by type — none are — so there was nothing to colour. | No per-type colouring exists in the PoC; adding it only for maps would be inconsistent. |
+| 97 | Layout changes for maps | None. A map slot is a round slot whose literal has no editor, exactly like a list slot. A map *literal* (possible only in a hand-edited document) is shown as its JSON text and cannot be edited. | Spec §2.4 expected none. |
+| 98 | The demo's `review details` | Trims every **text** value (other values pass through untouched), then sets `"reviewed"` to `true` (appended, or replaced in place if the key existed). `log details` writes `key: text` lines. | Spec §4, made precise. |
+| 99 | Third script's output | `escalated: bool`, returned straight from `value of "reviewed" in reviewed`. | Spec §4. The reporter's type is unknown statically, which the bool slot accepts without a warning. |
+| 100 | `acceptance.json` | Now schema version 2 with three scripts; the hand-written third binds three of `fetch ticket`'s four outputs, as the spec lists. | Shows an unbound output chip (`opened → …`) in the snapshot. |
+
 ## What is verified, and how
 
 | Area | How |
 |---|---|
 | Coercion, compare, dates and times | Table-driven unit tests with a fixed time zone and clock. |
 | Document JSON | Byte-identical round-trip; hand-written JSON; unknown kinds; newer schema rejected; malformed input rejected. |
+| Maps (M7) | Each of the nine blocks; reporters leaving their argument untouched; `set entry` / `remove entry` starting from unset, from text and from JSON text; **rebinding leaving copies held elsewhere unchanged**; validation of `set entry` as a binding of type map; the third acceptance script's outputs, trace, notes and log from hand-written JSON; the Maps palette; a layout test and a snapshot of the third script; the build-from-nothing test extended to it; drops onto a map slot (variable, reporter, predicate accepted; statement not; wrong type only warns). |
 | Maps (M6) | `OrderedMap` semantics (replace in place, append, remove, duplicates, value semantics under copy); every coercion rule of SPEC-maps §2.2 table-driven, including the text round-trip and 27 kinds of invalid JSON; maps in documents (pairs array, nested, byte-identical, duplicate keys, malformed); a version 1 document loads; a handler receiving and returning maps. |
 | Built-in blocks, interpreter | Unit tests per block and per rule of spec §8, plus the acceptance scripts on fake data. |
 | Validation | Unit tests for every finding of spec §8, including the three named in §10. |
@@ -145,22 +161,30 @@ Places where the spec was ambiguous, and what was chosen.
 | Hit-testing, editing operations, drag logic | Table-driven and scenario unit tests; no view involved. |
 | Undo / redo | Eleven kinds of edit round-tripped through a real `UndoManager`. |
 | Building the acceptance scripts from nothing | A unit test performs the same operations the editor performs, checking each drop against the slot rules, and compares the traces with the hand-written document. |
-| Drag gestures in the real window | `--ui-test` replays: palette → canvas, moving a stack, a reporter into a slot, deleting on the palette. The author also tried the demo by hand. |
+| Drag gestures in the real window | `--ui-test` replays: palette → canvas, moving a stack, a reporter into a slot, deleting on the palette; clicks on a field, a bool picker, an output chip and a block. |
+| Clicks and keys, by hand | The author walked through, with the terminal watched for warnings: typing in a field (Return); picking from an output's list; New Script, adding a parameter and changing its type, Done, Delete Script; the Run panel's picker and Run; Empty / Acceptance; selecting a block, Delete, ⌘Z, ⇧⌘Z; creating a variable from a `set` block; dragging `if`, an operator and a variable chip; the hover bubble ("condition is empty"). All behaved as described. |
 | Consumer package | `swift build` and `swift run Consumer` in `Examples/Consumer`. |
 
-**Not verified by any test or replay** (tried only by hand, or not at all):
+**Not verified by any test, replay or walk-through:**
 
-- the inline text field (focus, Return, Esc, committing on click-away);
-- the picker popovers and the date picker;
-- the Delete key (it needs the canvas to hold keyboard focus);
-- ⌘Z / ⇧⌘Z arriving from the Edit menu (the bridge behind them is tested);
-- the hover bubble with validation messages;
+- Esc in the inline text field, and committing it by clicking away;
+- the date / time picker, the reference picker's search, the script picker;
 - dragging after the canvas or the palette has been scrolled;
-- the Run panel's controls, and Open… / Save…;
+- Open… / Save…;
+- **building the third (maps) script by hand in the window** — the operations are tested, the gestures for it are not;
 - light mode in the running app (snapshots only);
 - that on-screen text is exactly as wide as the layout measured it (AppKit measures, SwiftUI draws).
 
+## Known issues
+
+- **`=== AttributeGraph: cycle detected through attribute … ===`** was printed once by the running demo (before M7). It is a SwiftUI diagnostic: some state was changed while a view update was in progress. Nothing looked wrong on screen. It could not be reproduced: not by replaying launches, resizes, drags and clicks, and not in a hand walk-through of every kind of action with the terminal watched. Cause unknown; if it recurs, the action just performed is the lead.
+
 ## Known limitations
+
+- **No literal map editor.** A map cannot be typed into a slot or edited in a popover; it is built with blocks and passed as a variable or reporter (SPEC-maps §8).
+- **No constructor block with rows.** One entry per block; a block with a "+" to add entries is explicitly not wanted for now.
+- **Map equality ignores entry order** in `compare` and the `=` block, while Swift's `==` on `OrderedMap` does not (82). Two different maps *order* by their JSON text, which is not "smaller first" (86).
+- **Dates, times, timestamps and references inside a map become text** when the map goes through its text form (84).
 
 - **Loops are not built.** A host-defined C-block runs its handler and ignores its regions; this is where `for each` and `repeat` will hook in (decision 37).
 - **One script per canvas, no loose blocks.** Hence: a drop on nothing cancels (57), and a slot holding a reporter is not a drop target (55).

@@ -7,6 +7,8 @@ public enum BuiltIn {
     public static let `return` = "control.return"
     public static let call = "control.call"
     public static let set = "variables.set"
+    public static let setEntry = "map.setEntry"
+    public static let removeEntry = "map.removeEntry"
 
     /// `if` / `if/else`: the boolean slot and the region names.
     public static let conditionInput = "condition"
@@ -16,9 +18,12 @@ public enum BuiltIn {
     public static let scriptInput = "script"
     /// … and the prefix of the slots carrying its arguments (`"arg.ticket"`).
     public static let argumentPrefix = "arg."
-    /// `set variable`: the slot naming the variable (a text literal) and the slot with the value.
+    /// `set variable`, `set entry`, `remove entry`: the slot naming the variable (a text literal) and the slot
+    /// with the value.
     public static let nameInput = "name"
     public static let valueInput = "value"
+    /// `set entry` / `remove entry`: the slot with the entry's key.
+    public static let keyInput = "key"
 
     /// The script a `call script` block points at.
     public static func callee(of block: Block, in document: Document) -> Script? {
@@ -26,9 +31,9 @@ public enum BuiltIn {
         return document.script(id: id)
     }
 
-    /// The variable a `set variable` block writes.
+    /// The variable a `set variable`, `set entry` or `remove entry` block writes.
     public static func setTarget(of block: Block) -> String? {
-        guard block.kind == set, case .literal(.text(let name))? = block.inputs[nameInput], !name.isEmpty else { return nil }
+        guard [set, setEntry, removeEntry].contains(block.kind), case .literal(.text(let name))? = block.inputs[nameInput], !name.isEmpty else { return nil }
         return name
     }
 }
@@ -39,9 +44,11 @@ extension Vocabulary {
     public static let operators = BlockCategory(id: "operators", title: "Operators", color: BlockColor(hex: 0x59C059))
     public static let time = BlockCategory(id: "time", title: "Time", color: BlockColor(hex: 0x5CB1D6))
     public static let lists = BlockCategory(id: "lists", title: "Lists", color: BlockColor(hex: 0xFF661A))
+    public static let maps = BlockCategory(id: "maps", title: "Maps", color: BlockColor(hex: 0x0FA98C))
 
-    /// The minimal built-in vocabulary: control, variables, operators, time and lists.
+    /// The minimal built-in vocabulary: control, variables, operators, time, lists and maps.
     public static let builtIns: [BlockDefinition] = controlBlocks + variableBlocks + operatorBlocks + timeBlocks + listBlocks
+        + mapBlocks
 
     // The interpreter executes these itself; their handlers are never called.
     private static let controlBlocks: [BlockDefinition] = [
@@ -188,6 +195,50 @@ extension Vocabulary {
             inputs.list("list").contains { Coercion.equal($0, inputs["item"], in: inputs.environment) }
         },
     ]
+}
+
+extension Vocabulary {
+    /// Maps are values: none of these changes a map in place. The reporters return a new map; the two
+    /// statements rebind a variable to a new map.
+    private static let mapBlocks: [BlockDefinition] = {
+        let variable = InputDefinition(name: BuiltIn.nameInput, label: "variable", types: [.text], editor: .variable)
+        return [
+            .reporter("map.empty", category: maps, title: "empty map", result: .map) { _, _ in .map(OrderedMap()) },
+            .reporter("map.with", category: maps, title: "%map with %key = %value",
+                      inputs: [.map("map"), .value("key", .text), .value("value")], result: .map) { inputs, _ in
+                .map(inputs.map("map").setting(inputs.text("key"), inputs["value"]))
+            },
+            .reporter("map.without", category: maps, title: "%map without %key",
+                      inputs: [.map("map"), .value("key", .text)], result: .map) { inputs, _ in
+                .map(inputs.map("map").removing(inputs.text("key")))
+            },
+            .reporter("map.value", category: maps, title: "value of %key in %map",
+                      inputs: [.value("key", .text), .map("map")], result: nil) { inputs, _ in
+                inputs.map("map")[inputs.text("key")] ?? .empty
+            },
+            .predicate("map.hasKey", category: maps, title: "%map has key %key",
+                       inputs: [.map("map"), .value("key", .text)]) { inputs, _ in
+                inputs.map("map").contains(inputs.text("key"))
+            },
+            .reporter("map.keys", category: maps, title: "keys of %map", inputs: [.map("map")], result: .list) { inputs, _ in
+                .list(inputs.map("map").keys.map(Value.text))
+            },
+            .reporter("map.count", category: maps, title: "number of entries in %map",
+                      inputs: [.map("map")], result: .number) { inputs, _ in
+                .number(Double(inputs.map("map").count))
+            },
+            // The interpreter executes the two statements itself (they write a variable); their handlers are never called.
+            //
+            // Sugar over rebinding: afterwards the variable holds a *new* map — its old map with the entry set,
+            // or a map with just this entry when the variable was unset or not a map. A map that was already
+            // copied into another variable, or passed to a block, is unchanged.
+            BlockDefinition(id: BuiltIn.setEntry, shape: .statement, category: maps, title: "set entry %key of %name to %value",
+                            inputs: [.value(BuiltIn.keyInput, .text), variable, .value(BuiltIn.valueInput)]) { _, _ in [:] },
+            // Likewise rebinds the variable to a new map without the entry; copies held elsewhere are unchanged.
+            BlockDefinition(id: BuiltIn.removeEntry, shape: .statement, category: maps, title: "remove entry %key of %name",
+                            inputs: [.value(BuiltIn.keyInput, .text), variable]) { _, _ in [:] },
+        ]
+    }()
 }
 
 /// Date and time arithmetic for the built-in time blocks. Total: what cannot be shifted gives the empty value.

@@ -20,7 +20,7 @@ macOS 14+, Swift tools 5.9, no third-party dependencies.
 swift run AlgoratorDemo
 ```
 
-A toy "ticket triage" app. It opens with the two acceptance scripts; **Empty** clears the document so they can
+A toy "ticket triage" app. It opens with the three acceptance scripts; **Empty** clears the document so they can
 be built by dragging, **Open…** / **Save…** read and write the JSON, and **Run** (⌘R) executes the script on
 the canvas against fake tickets and shows the trace.
 
@@ -115,6 +115,43 @@ let result = Interpreter(document: document, vocabulary: vocabulary)
 // The editor. `references` backs the reference pickers; edits register with the window's undo manager.
 AlgoratorEditorView(document: $document, vocabulary: vocabulary, references: myDirectory)
 ```
+
+## Maps
+
+A block's slots are fixed in number. When a host operation takes a **variable number of named inputs** ("run
+this script with parameters *a*, *b*, *c*"), give its block **one slot of type `map`** instead: an ordered map
+of named values (text keys, compared exactly; entries keep insertion order; any value, including lists and
+other maps).
+
+```swift
+.statement("script.run", category: scripts, title: "run %name with %params",
+           inputs: [.value("name", .text), .map("params")]) { inputs, _ in
+    for entry in inputs.map("params").entries {      // an OrderedMap: entry.key, entry.value, in order
+        …
+    }
+    return [:]
+}
+```
+
+A map slot has no literal editor; it takes a variable or a reporter. The script builds the map with ordinary
+blocks, one entry per block. The nine built-in map blocks (category "Maps"):
+
+| Block | Gives |
+|---|---|
+| `empty map` | the empty map |
+| `(map) with (key) = (value)` | a new map with the entry set (replaced in place, or appended) |
+| `(map) without (key)` | a new map without the entry |
+| `value of (key) in (map)` | the entry's value, or the empty value |
+| `(map) has key (key)` | true or false |
+| `keys of (map)` | a list of the keys, in order |
+| `number of entries in (map)` | a number |
+| `set entry (key) of [variable] to (value)` | statement: rebinds the variable to a new map with the entry set; starts from the empty map when the variable is unset |
+| `remove entry (key) of [variable]` | statement: rebinds the variable to a new map without the entry |
+
+Maps are values: no block changes one in place. After `set entry`, a map that was already copied to another
+variable or passed to a block is unchanged. As text a map is compact JSON (`{"title":"High","n":2}`), and text
+that is a JSON object can be used wherever a map is expected. A block can also *return* a map (the demo's
+`review details` does: map in, map out).
 
 The pieces underneath the view are public and pure, for hosts that want their own chrome or tests:
 `LayoutEngine` (script → frames), `BlockRenderer` (frames → drawing), `HitTest` (point → drop target),

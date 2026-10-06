@@ -203,6 +203,17 @@ private final class Run {
             guard let name = BuiltIn.setTarget(of: block) else { throw BlockError("No variable is chosen") }
             frame.variables[name] = inputs[BuiltIn.valueInput]
 
+        case BuiltIn.setEntry, BuiltIn.removeEntry:
+            guard let name = BuiltIn.setTarget(of: block) else { throw BlockError("No variable is chosen") }
+            // A new map is bound; whatever map the variable held before is not touched.
+            var map = Coercion.toMap(frame.variables[name] ?? .empty)
+            if block.kind == BuiltIn.setEntry {
+                map.set(inputs.text(BuiltIn.keyInput), inputs[BuiltIn.valueInput])
+            } else {
+                map.remove(inputs.text(BuiltIn.keyInput))
+            }
+            frame.variables[name] = .map(map)
+
         default:
             bind(try definition.handler(inputs, context(frame)), of: block, frame)
             // A host-defined cap ends the script like `return`, with no outputs.

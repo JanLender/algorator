@@ -79,7 +79,10 @@ private struct Pass {
 
     mutating func declare(_ blocks: [Block]) {
         for block in blocks {
-            if let name = BuiltIn.setTarget(of: block) { declare(name, VariableType()) }
+            if let name = BuiltIn.setTarget(of: block) {
+                // `set` can store anything; `set entry` and `remove entry` always leave a map.
+                declare(name, VariableType(type: block.kind == BuiltIn.set ? nil : .map))
+            }
             if let signature = vocabulary.signature(of: block, in: script, document: document) {
                 for (output, name) in block.bindings where !name.isEmpty {
                     let definition = signature.outputs.first { $0.name == output }

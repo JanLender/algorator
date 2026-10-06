@@ -31,6 +31,8 @@ public final class TicketDirectory: ReferenceProvider {
     public var tickets: [String: Ticket]
     public var users: [String: String]
     public private(set) var notifications: [Notification] = []
+    /// What `log details` wrote: one line per entry, in the map's order.
+    public private(set) var log: [String] = []
 
     public init(tickets: [String: Ticket], users: [String: String]) {
         self.tickets = tickets
@@ -58,6 +60,11 @@ public final class TicketDirectory: ReferenceProvider {
         tickets = fresh.tickets
         users = fresh.users
         notifications = []
+        log = []
+    }
+
+    public func writeLog(_ line: String) {
+        log.append(line)
     }
 
     public func notify(user: String, message: String) {
@@ -118,6 +125,32 @@ public enum TicketVocabulary {
                 }
                 return [:]
             },
+            // One map slot instead of a variable number of slots.
+            .statement("ticket.logDetails", category: tickets, title: "log details %details",
+                       inputs: [.map("details")]) { inputs, context in
+                let details = inputs.map("details")
+                for entry in details.entries {
+                    directory.writeLog("\(entry.key): \(Coercion.toText(entry.value, in: inputs.environment))")
+                }
+                context.note("Logged \(details.count) \(details.count == 1 ? "entry" : "entries")")
+                return [:]
+            },
+            // Map in, map out. Stands in for a person reviewing the values in a form: every text value is
+            // trimmed and the result is marked as reviewed.
+            .statement("ticket.reviewDetails", category: tickets, title: "review details %details",
+                       inputs: [.map("details")], outputs: [OutputDefinition("reviewed", .map)]) { inputs, context in
+                var reviewed = OrderedMap()
+                for entry in inputs.map("details").entries {
+                    if case .text(let text) = entry.value {
+                        reviewed.set(entry.key, .text(text.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    } else {
+                        reviewed.set(entry.key, entry.value)
+                    }
+                }
+                reviewed.set("reviewed", true)
+                context.note("Reviewed \(reviewed.count - 1) \(reviewed.count == 2 ? "value" : "values")")
+                return ["reviewed": .map(reviewed)]
+            },
             .predicate("ticket.isOverdue", category: tickets, title: "ticket is overdue %ticket",
                        inputs: [.reference("ticket", kind: "ticket")]) { inputs, context in
                 context.now.timeIntervalSince(try ticket(inputs).ticket.opened) > overdueAfter
@@ -126,10 +159,11 @@ public enum TicketVocabulary {
     }
 }
 
-/// The two acceptance scripts of the spec (§10), hand-written as JSON.
+/// The acceptance scripts (SPEC.md §10, SPEC-maps.md §4), hand-written as JSON.
 public enum AcceptanceDocument {
     public static let escalateTicketID = "escalate-ticket"
     public static let allClearID = "escalate-all-clear"
+    public static let detailsID = "escalate-with-details"
 
     public static func load() throws -> Document {
         guard let url = Bundle.module.url(forResource: "acceptance", withExtension: "json") else {
