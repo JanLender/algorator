@@ -215,13 +215,13 @@ Places where the spec was ambiguous, and what was chosen.
 | Hit-testing, editing operations, drag logic | Table-driven and scenario unit tests; no view involved. |
 | Undo / redo | Eleven kinds of edit round-tripped through a real `UndoManager`. |
 | Building the acceptance scripts from nothing | A unit test performs the same operations the editor performs, checking each drop against the slot rules, and compares the traces with the hand-written document. |
+| The multi-line text popover, by hand | The author tried it on the M10 build and reported that it works (opening on a click, Return for a new line, Done, Esc, clicking away), and that running `Escalate ticket` on `T-4` fails with the templated message. |
 | Drag gestures in the real window | `--ui-test` replays: palette → canvas, moving a stack, a reporter into a slot, deleting on the palette; clicks on a field, a bool picker, an output chip and a block. Palette → canvas was replayed again on the M10 build (after the M8 isolation changes) and inserted its block; at the end of M8 itself the replay could not run because the window could not take focus. A replayed click on a long-text field produced no warning, which says nothing about whether the popover looked right. |
 | Clicks and keys, by hand | The author walked through, with the terminal watched for warnings: typing in a field (Return); picking from an output's list; New Script, adding a parameter and changing its type, Done, Delete Script; the Run panel's picker and Run; Empty / Acceptance; selecting a block, Delete, ⌘Z, ⇧⌘Z; creating a variable from a `set` block; dragging `if`, an operator and a variable chip; the hover bubble ("condition is empty"). All behaved as described. |
 | Consumer package | `swift build` and `swift run Consumer` in `Examples/Consumer`. |
 
 **Not verified by any test, replay or walk-through:**
 
-- **the multi-line text popover**: that it opens on a click, that the editor gets focus, that Return inserts a newline, that Done / ⌘Return and clicking away commit, and that Cancel / Esc discard. The logic behind commit and cancel is tested; the view is not;
 - Esc in the inline text field, and committing it by clicking away;
 - the date / time picker, the reference picker's search, the script picker;
 - dragging after the canvas or the palette has been scrolled;

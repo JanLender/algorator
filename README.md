@@ -62,12 +62,12 @@ dependencies: [
 ],
 ```
 
-Once there is a release, depend on the repository (the URL below is a placeholder) and a version. **A release is a git tag** (`0.1.0`, …);
+To use a release, depend on the repository and a version. **A release is a git tag** (`0.1.0`, …);
 nothing is published to a registry and consumers build from source:
 
 ```swift
 dependencies: [
-    .package(url: "https://example.com/you/algorator.git", from: "0.1.0"),
+    .package(url: "https://github.com/JanLender/algorator.git", from: "0.1.0"),
 ],
 ```
 
