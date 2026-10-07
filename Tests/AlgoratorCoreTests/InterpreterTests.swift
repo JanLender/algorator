@@ -273,13 +273,13 @@ final class InterpreterTests: XCTestCase {
         let (result, directory) = try acceptance(AcceptanceDocument.escalateTicketID, ticket: "T-1")
         XCTAssertEqual(result.status, .returned)
         XCTAssertEqual(result.outputs, ["escalated": true])
-        XCTAssertEqual(result.trace.map(\.blockID), ["fetch", "decide", "notify-assignee", "label", "return-true"])
+        XCTAssertEqual(result.trace.map(\.blockID), ["fetch", "guard", "decide", "notify-assignee", "label", "return-true"])
         XCTAssertEqual(result.trace.map(\.label), [
-            "fetch ticket T-1", "if true then", "notify alice message Escalated: Login page is down",
+            "fetch ticket T-1", "if false then", "if true then", "notify alice message Escalated: Login page is down",
             "add label escalated to T-1", "return escalated true",
         ])
         XCTAssertTrue(result.trace.allSatisfy(\.succeeded))
-        XCTAssertEqual(result.trace[2].note, "Sent to Alice")
+        XCTAssertEqual(result.trace[3].note, "Sent to Alice")
         XCTAssertEqual(directory.notifications, [.init(user: "alice", message: "Escalated: Login page is down")])
         XCTAssertEqual(directory.tickets["T-1"]?.labels, ["escalated"])
     }
@@ -294,7 +294,7 @@ final class InterpreterTests: XCTestCase {
         let (result, directory) = try acceptance(AcceptanceDocument.escalateTicketID, ticket: "T-3")
         XCTAssertEqual(result.status, .returned)
         XCTAssertEqual(result.outputs, ["escalated": false])
-        XCTAssertEqual(result.trace.map(\.blockID), ["fetch", "decide", "return-false"])
+        XCTAssertEqual(result.trace.map(\.blockID), ["fetch", "guard", "decide", "return-false"])
         XCTAssertEqual(directory.notifications, [])
         XCTAssertEqual(directory.tickets["T-3"]?.labels, [])
     }
@@ -311,14 +311,14 @@ final class InterpreterTests: XCTestCase {
     func testAllClearCallsEscalateAndBranchesOnItsOutput() throws {
         let (escalated, first) = try acceptance(AcceptanceDocument.allClearID, ticket: "T-1")
         XCTAssertEqual(escalated.status, .completed)
-        XCTAssertEqual(escalated.trace.map(\.blockID), ["call-escalate", "fetch", "decide", "notify-assignee", "label",
+        XCTAssertEqual(escalated.trace.map(\.blockID), ["call-escalate", "fetch", "guard", "decide", "notify-assignee", "label",
                                                        "return-true", "branch", "tell-ops"])
-        XCTAssertEqual(escalated.trace.map(\.depth), [0, 1, 1, 1, 1, 1, 0, 0])
+        XCTAssertEqual(escalated.trace.map(\.depth), [0, 1, 1, 1, 1, 1, 1, 0, 0])
         XCTAssertEqual(escalated.trace[0].label, "call Escalate ticket ticket T-1")
         XCTAssertEqual(first.notifications.map(\.message), ["Escalated: Login page is down", "A ticket was escalated"])
 
         let (clear, second) = try acceptance(AcceptanceDocument.allClearID, ticket: "T-3")
-        XCTAssertEqual(clear.trace.map(\.blockID), ["call-escalate", "fetch", "decide", "return-false", "branch", "all-clear"])
+        XCTAssertEqual(clear.trace.map(\.blockID), ["call-escalate", "fetch", "guard", "decide", "return-false", "branch", "all-clear"])
         XCTAssertEqual(second.notifications, [.init(user: "ops", message: "All clear")])
     }
 

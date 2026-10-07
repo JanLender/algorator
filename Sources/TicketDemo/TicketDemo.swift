@@ -57,7 +57,7 @@ public final class TicketDirectory: ReferenceProvider, Sendable {
     /// What `log details` wrote: one line per entry, in the map's order.
     public var log: [String] { state.withLock { $0.log } }
 
-    /// Three tickets relative to `now`: T-1 is high priority, T-2 is old, T-3 is neither.
+    /// Four tickets relative to `now`: T-1 is high priority, T-2 is old, T-3 is neither, T-4 has no title.
     public static func sample(now: Date) -> TicketDirectory {
         TicketDirectory(tickets: sampleTickets(now: now), users: sampleUsers)
     }
@@ -70,6 +70,8 @@ public final class TicketDirectory: ReferenceProvider, Sendable {
             "T-1": Ticket(title: "Login page is down", priority: "high", assignee: "alice", opened: now.addingTimeInterval(-1 * hour)),
             "T-2": Ticket(title: "Typo in the footer", priority: "low", assignee: "bob", opened: now.addingTimeInterval(-5 * 24 * hour)),
             "T-3": Ticket(title: "Update the logo", priority: "low", assignee: "carol", opened: now.addingTimeInterval(-3 * hour)),
+            // Has no title, so `Escalate ticket` refuses it.
+            "T-4": Ticket(title: "", priority: "low", assignee: "bob", opened: now.addingTimeInterval(-2 * hour)),
         ]
     }
 
@@ -115,7 +117,7 @@ public final class TicketDirectory: ReferenceProvider, Sendable {
     public func candidates(kind: String, matching: String) -> [ReferenceCandidate] {
         let all: [ReferenceCandidate]
         switch kind {
-        case "ticket": all = tickets.map { ReferenceCandidate(id: $0.key, label: "\($0.key) — \($0.value.title)") }
+        case "ticket": all = tickets.map { ReferenceCandidate(id: $0.key, label: "\($0.key) — \($0.value.title.isEmpty ? "(no title)" : $0.value.title)") }
         case "user": all = users.map { ReferenceCandidate(id: $0.key, label: $0.value) }
         default: all = []
         }

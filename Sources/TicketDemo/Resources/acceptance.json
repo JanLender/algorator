@@ -14,6 +14,22 @@
           "bindings": { "title": "title", "priority": "priority", "assignee": "assignee", "opened": "opened" }
         },
         {
+          "id": "guard",
+          "kind": "control.if",
+          "inputs": {
+            "condition": { "reporter": {
+              "id": "no-title",
+              "kind": "operator.isEmpty",
+              "inputs": { "value": { "variable": "title" } }
+            } }
+          },
+          "regions": {
+            "then": [
+              { "id": "refuse", "kind": "control.fail", "inputs": { "message": { "literal": { "text": "The ticket has no title" } } } }
+            ]
+          }
+        },
+        {
           "id": "decide",
           "kind": "control.ifElse",
           "inputs": {

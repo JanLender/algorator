@@ -159,10 +159,10 @@ final class AcceptanceRoundTripTests: XCTestCase {
         // As if the host had dropped `ticket.addLabel` from its vocabulary: the block stays in the file,
         // validation flags it, and the rest of the script is untouched.
         var document = try AcceptanceDocument.load()
-        document.scripts[0].body[1].regions["then"]?[1].kind = "ticket.removedInV2"
+        document.scripts[0].body[2].regions["then"]?[1].kind = "ticket.removedInV2"
         let reloaded = try Document(json: try document.jsonData())
         XCTAssertEqual(reloaded, document)
-        let kept = try XCTUnwrap(reloaded.scripts[0].body[1].regions["then"]?[1])
+        let kept = try XCTUnwrap(reloaded.scripts[0].body[2].regions["then"]?[1])
         XCTAssertEqual(kept.kind, "ticket.removedInV2")
         XCTAssertEqual(kept.inputs, ["label": .literal("escalated"), "ticket": .variable("ticket")])
 
@@ -174,7 +174,7 @@ final class AcceptanceRoundTripTests: XCTestCase {
         let result = Interpreter(document: reloaded, vocabulary: vocabulary, environment: env)
             .run(scriptID: "escalate-ticket", arguments: ["ticket": ref("ticket", "T-1")])
         XCTAssertEqual(result.status, .failed)
-        XCTAssertEqual(result.trace.map(\.blockID), ["fetch", "decide", "notify-assignee", "label"])
+        XCTAssertEqual(result.trace.map(\.blockID), ["fetch", "guard", "decide", "notify-assignee", "label"])
     }
 
     func testDirectoryResetRestoresTheSampleData() {
@@ -184,7 +184,7 @@ final class AcceptanceRoundTripTests: XCTestCase {
         directory.tickets["T-9"] = directory.tickets["T-1"]
         directory.reset(now: fixedNow)
         XCTAssertEqual(directory.notifications, [])
-        XCTAssertEqual(directory.tickets.keys.sorted(), ["T-1", "T-2", "T-3"])
+        XCTAssertEqual(directory.tickets.keys.sorted(), ["T-1", "T-2", "T-3", "T-4"])
         XCTAssertEqual(directory.tickets["T-1"]?.labels, [])
     }
 }

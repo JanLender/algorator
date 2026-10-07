@@ -285,9 +285,9 @@ final class LayoutTests: XCTestCase {
         let scripts = [Script(id: "a", name: "A"), Script(id: "b", name: "B", outputs: [Param(name: "r", type: .text)])]
         let palette = engine(scripts).palette(category: "control", for: scripts[0])
         XCTAssertEqual(palette.items.map(\.layout.id),
-                       ["palette:control.if", "palette:control.ifElse", "palette:control.return", "palette:control.call:a",
+                       ["palette:control.if", "palette:control.ifElse", "palette:control.return", "palette:control.fail", "palette:control.call:a",
                         "palette:control.call:b"])
-        guard case .block(let call) = palette.items[4].source else { return XCTFail("not a block") }
+        guard case .block(let call) = palette.items[5].source else { return XCTFail("not a block") }
         XCTAssertEqual(call.inputs, ["script": .literal("b")])
         XCTAssertEqual(call.bindings, ["r": "r"])
     }

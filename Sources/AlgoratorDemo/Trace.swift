@@ -12,7 +12,8 @@ func printTraces() throws {
     print("Validation: \(issues.isEmpty ? "no issues" : issues.map { "\($0.severity) [\($0.blockID)] \($0.message)" }.joined(separator: "; "))")
 
     for (scriptID, ticket) in [(AcceptanceDocument.allClearID, "T-1"), (AcceptanceDocument.allClearID, "T-2"),
-                               (AcceptanceDocument.allClearID, "T-3"), (AcceptanceDocument.detailsID, "T-1")] {
+                               (AcceptanceDocument.allClearID, "T-3"), (AcceptanceDocument.detailsID, "T-1"),
+                               (AcceptanceDocument.escalateTicketID, "T-4")] {
         let arguments: [String: Value] = ["ticket": .reference(Reference(kind: "ticket", id: ticket))]
         let result = Interpreter(document: document, vocabulary: vocabulary).run(scriptID: scriptID, arguments: arguments)
         print("\n\(document.script(id: scriptID)?.name ?? scriptID)(\(ticket)) → \(result.status.rawValue) \(result.outputs)")

@@ -191,6 +191,11 @@ private final class Run {
         case BuiltIn.return:
             return .returned(inputs.values)
 
+        case BuiltIn.fail:
+            // The same path as a throwing handler: this step is marked failed and the whole run ends.
+            let message = inputs.text(BuiltIn.messageInput)
+            throw BlockError(message.isEmpty ? BuiltIn.defaultFailureMessage : message)
+
         case BuiltIn.call:
             guard let callee = BuiltIn.callee(of: block, in: document) else {
                 throw BlockError("The called script does not exist")

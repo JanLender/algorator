@@ -157,7 +157,7 @@ final class ValidationTests: XCTestCase {
     func testWrongReferenceKindInTheAcceptanceScript() throws {
         // Feed the assignee (a user) to `add label … to %ticket`.
         var document = try AcceptanceDocument.load()
-        document.scripts[0].body[1].regions["then"]?[1].inputs["ticket"] = .variable("assignee")
+        document.scripts[0].body[2].regions["then"]?[1].inputs["ticket"] = .variable("assignee")
         let found = Validator.validate(document, vocabulary: TicketVocabulary.make(directory: .sample(now: fixedNow)))
         XCTAssertEqual(found, [Issue(scriptID: "escalate-ticket", blockID: "label", severity: .error,
                                      message: "“ticket” needs a ticket, not a user")])

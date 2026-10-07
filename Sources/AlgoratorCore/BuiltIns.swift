@@ -6,6 +6,7 @@ public enum BuiltIn {
     public static let ifElse = "control.ifElse"
     public static let `return` = "control.return"
     public static let call = "control.call"
+    public static let fail = "control.fail"
     public static let set = "variables.set"
     public static let setEntry = "map.setEntry"
     public static let removeEntry = "map.removeEntry"
@@ -14,6 +15,10 @@ public enum BuiltIn {
     public static let conditionInput = "condition"
     public static let thenRegion = "then"
     public static let elseRegion = "else"
+    /// `fail with`: the slot with the error message.
+    public static let messageInput = "message"
+    /// What a `fail` with an empty message reports.
+    public static let defaultFailureMessage = "The script failed"
     /// `call script`: the slot holding the callee's script id (a text literal) …
     public static let scriptInput = "script"
     /// … and the prefix of the slots carrying its arguments (`"arg.ticket"`).
@@ -58,6 +63,10 @@ extension Vocabulary {
                         inputs: [.boolean(BuiltIn.conditionInput)],
                         regions: [BuiltIn.thenRegion, BuiltIn.elseRegion]) { _, _ in [:] },
         BlockDefinition(id: BuiltIn.return, shape: .cap, category: control, title: "return") { _, _ in [:] },
+        // Ends the whole run as failed, with the message — exactly as a handler throwing `BlockError` does. It
+        // passes through `call script` (a failing callee fails its caller) and cannot be caught in a script.
+        BlockDefinition(id: BuiltIn.fail, shape: .cap, category: control, title: "fail with %message",
+                        inputs: [.value(BuiltIn.messageInput, .text)]) { _, _ in [:] },
         BlockDefinition(id: BuiltIn.call, shape: .statement, category: control, title: "call %script",
                         inputs: [InputDefinition(name: BuiltIn.scriptInput, types: [.text], editor: .script)]) { _, _ in [:] },
     ]
@@ -127,6 +136,11 @@ extension Vocabulary {
                       inputs: [.value("text", .text)], result: .number) { inputs, _ in
                 .number(Double(inputs.text("text").count))
             },
+            // Fixed-point text, the same on every machine: `.` as the decimal separator and no grouping.
+            .reporter("operator.formatNumber", category: operators, title: "format number %number with %decimals decimals",
+                      inputs: [.value("number", .number), .value("decimals", .number, default: 2)], result: .text) { inputs, _ in
+                .text(Formatting.fixedPoint(inputs["number"], decimals: inputs.number("decimals")))
+            },
         ]
     }()
 
@@ -164,6 +178,13 @@ extension Vocabulary {
             },
             shift("addHours", "hours", seconds: 3600),
             shift("addMinutes", "minutes", seconds: 60),
+            // A Unicode (TR35) pattern such as `yyyy-MM-dd`, `HH:mm` or `d. M. yyyy`, in the fixed `en_US_POSIX`
+            // locale so the result does not depend on the machine. A timestamp is shown in the environment's zone.
+            .reporter("time.format", category: time, title: "format %value as %pattern",
+                      inputs: [InputDefinition(name: "value", types: [.timestamp, .date, .time], editor: .timestamp),
+                               .value("pattern", .text, default: "yyyy-MM-dd")], result: .text) { inputs, _ in
+                .text(Formatting.temporal(inputs["value"], pattern: inputs.text("pattern"), in: inputs.environment))
+            },
         ]
     }()
 
@@ -239,6 +260,62 @@ extension Vocabulary {
                             inputs: [.value(BuiltIn.keyInput, .text), variable]) { _, _ in [:] },
         ]
     }()
+}
+
+/// Formatting for the `format … as …` and `format number …` blocks. Pure, total (what cannot be formatted
+/// gives the empty text) and deterministic: the locale is always `en_US_POSIX`, never the machine's.
+enum Formatting {
+    /// Formats a date, time or timestamp with a Unicode (TR35 / `DateFormatter`) pattern.
+    ///
+    /// A timestamp is shown in the environment's zone. A date or a time has no zone and is formatted as is; the
+    /// fields it lacks read as midnight and as 2000-01-01. Anything else is coerced — to a timestamp, else a
+    /// date, else a time — and gives the empty text when none of them works.
+    static func temporal(_ value: Value, pattern: String, in environment: RunEnvironment) -> String {
+        let instant: Date
+        let zone: TimeZone
+        switch value {
+        case .timestamp(let timestamp):
+            (instant, zone) = (timestamp, environment.timeZone)
+        case .date(let date):
+            guard let midnight = ISO.instant(date, LocalTime(hour: 0, minute: 0)!, in: ISO.utc) else { return "" }
+            (instant, zone) = (midnight, ISO.utc)
+        case .time(let time):
+            guard let reference = LocalDate(year: 2000, month: 1, day: 1), let moment = ISO.instant(reference, time, in: ISO.utc)
+            else { return "" }
+            (instant, zone) = (moment, ISO.utc)
+        default:
+            if let timestamp = Coercion.toTimestamp(value, in: environment) {
+                return temporal(.timestamp(timestamp), pattern: pattern, in: environment)
+            } else if let date = Coercion.toDate(value, in: environment) {
+                return temporal(.date(date), pattern: pattern, in: environment)
+            } else if let time = Coercion.toTime(value, in: environment) {
+                return temporal(.time(time), pattern: pattern, in: environment)
+            }
+            return ""
+        }
+        // Made on demand: a formatter is not `Sendable`, so none is kept around.
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = ISO.calendar(zone)
+        formatter.timeZone = zone
+        formatter.dateFormat = pattern
+        return formatter.string(from: instant)
+    }
+
+    /// Fixed-point text with `.` as the decimal separator and no grouping; halves round away from zero.
+    /// `decimals` is rounded and clamped to 0…10. A value that is not numeric gives the empty text.
+    static func fixedPoint(_ value: Value, decimals: Double) -> String {
+        guard let number = Coercion.numeric(value), number.isFinite else { return "" }
+        let places = Int(max(0, min(10, decimals.isFinite ? decimals.rounded() : 0)))
+        let scaled = (abs(number) * pow(10, Double(places))).rounded(.toNearestOrAwayFromZero)
+        guard scaled.isFinite else { return "" }
+        // The scaled value is integral, so "%.0f" prints exactly its digits; then the point is put back.
+        var digits = String(format: "%.0f", scaled)
+        if digits.count <= places { digits = String(repeating: "0", count: places - digits.count + 1) + digits }
+        let whole = digits.dropLast(places), fraction = digits.suffix(places)
+        let sign = number < 0 && scaled != 0 ? "-" : ""
+        return sign + whole + (places > 0 ? "." + fraction : "")
+    }
 }
 
 /// Date and time arithmetic for the built-in time blocks. Total: what cannot be shifted gives the empty value.

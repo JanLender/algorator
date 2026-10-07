@@ -310,7 +310,12 @@ final class EditingSessionTests: XCTestCase {
         // Escalate ticket
         let fetch = try drop("ticket.fetch", at: body(0), into: 0)
         try chip("ticket", into: fetch, "ticket", of: 0)
-        let decide = try drop(BuiltIn.ifElse, at: body(1), into: 0)
+        let guardBlock = try drop(BuiltIn.if, at: body(1), into: 0)
+        let noTitle = try drop("operator.isEmpty", at: slot(guardBlock, "condition"), into: 0)
+        try chip("title", into: noTitle, "value", of: 0)
+        let refuse = try drop(BuiltIn.fail, at: .region(owner: guardBlock, name: "then", index: 0), into: 0)
+        try type("The ticket has no title", into: refuse, "message", of: 0)
+        let decide = try drop(BuiltIn.ifElse, at: body(2), into: 0)
         let or = try drop("operator.or", at: slot(decide, "condition"), into: 0)
         let isHigh = try drop("operator.equals", at: slot(or, "a"), into: 0)
         try chip("priority", into: isHigh, "a", of: 0)
