@@ -215,7 +215,7 @@ Places where the spec was ambiguous, and what was chosen.
 | Hit-testing, editing operations, drag logic | Table-driven and scenario unit tests; no view involved. |
 | Undo / redo | Eleven kinds of edit round-tripped through a real `UndoManager`. |
 | Building the acceptance scripts from nothing | A unit test performs the same operations the editor performs, checking each drop against the slot rules, and compares the traces with the hand-written document. |
-| Drag gestures in the real window | `--ui-test` replays: palette → canvas, moving a stack, a reporter into a slot, deleting on the palette; clicks on a field, a bool picker, an output chip and a block. |
+| Drag gestures in the real window | `--ui-test` replays: palette → canvas, moving a stack, a reporter into a slot, deleting on the palette; clicks on a field, a bool picker, an output chip and a block. Palette → canvas was replayed again on the M10 build (after the M8 isolation changes) and inserted its block; at the end of M8 itself the replay could not run because the window could not take focus. A replayed click on a long-text field produced no warning, which says nothing about whether the popover looked right. |
 | Clicks and keys, by hand | The author walked through, with the terminal watched for warnings: typing in a field (Return); picking from an output's list; New Script, adding a parameter and changing its type, Done, Delete Script; the Run panel's picker and Run; Empty / Acceptance; selecting a block, Delete, ⌘Z, ⇧⌘Z; creating a variable from a `set` block; dragging `if`, an operator and a variable chip; the hover bubble ("condition is empty"). All behaved as described. |
 | Consumer package | `swift build` and `swift run Consumer` in `Examples/Consumer`. |
 
@@ -227,7 +227,6 @@ Places where the spec was ambiguous, and what was chosen.
 - dragging after the canvas or the palette has been scrolled;
 - Open… / Save…;
 - **building the third (maps) script by hand in the window** — the operations are tested, the gestures for it are not;
-- **Gestures in the M8 build**: the `--ui-test` replay could not run at the end of M8 because the demo window could not become the key window while another app held the focus (SwiftUI ignores clicks in a non-key window). The M7 build failed the same replay at the same moment, so this is the environment, not M8; the replay mode now reports it instead of silently doing nothing. Dragging and clicking in the M8 build still want a try by hand;
 - **Thread Sanitizer**: the concurrency tests were not run under it. The sanitizer build succeeded but the test runner would not start with the sanitizer loaded in this environment;
 - light mode in the running app (snapshots only);
 - that on-screen text is exactly as wide as the layout measured it (AppKit measures, SwiftUI draws).
