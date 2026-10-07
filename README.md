@@ -63,11 +63,12 @@ dependencies: [
 ```
 
 To use a release, depend on the repository and a version. **A release is a git tag** (`0.1.0`, …);
-nothing is published to a registry and consumers build from source:
+nothing is published to a registry and consumers build from source. The repository is private, so use its
+SSH address (the machine building the consumer needs an SSH key with access to it):
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/JanLender/algorator.git", from: "0.1.0"),
+    .package(url: "git@github.com:JanLender/algorator.git", from: "0.1.0"),
 ],
 ```
 
