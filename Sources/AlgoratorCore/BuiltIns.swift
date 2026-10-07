@@ -7,6 +7,9 @@ public enum BuiltIn {
     public static let `return` = "control.return"
     public static let call = "control.call"
     public static let fail = "control.fail"
+    /// The `text %template` reporter: a template written inline.
+    public static let text = "operators.text"
+    public static let templateInput = "template"
     public static let set = "variables.set"
     public static let setEntry = "map.setEntry"
     public static let removeEntry = "map.removeEntry"
@@ -65,8 +68,9 @@ extension Vocabulary {
         BlockDefinition(id: BuiltIn.return, shape: .cap, category: control, title: "return") { _, _ in [:] },
         // Ends the whole run as failed, with the message — exactly as a handler throwing `BlockError` does. It
         // passes through `call script` (a failing callee fails its caller) and cannot be caught in a script.
+        // The message is a template: `fail with "Ticket {ticket} has no title"`.
         BlockDefinition(id: BuiltIn.fail, shape: .cap, category: control, title: "fail with %message",
-                        inputs: [.value(BuiltIn.messageInput, .text)]) { _, _ in [:] },
+                        inputs: [.longText(BuiltIn.messageInput, interpolates: true)]) { _, _ in [:] },
         BlockDefinition(id: BuiltIn.call, shape: .statement, category: control, title: "call %script",
                         inputs: [InputDefinition(name: BuiltIn.scriptInput, types: [.text], editor: .script)]) { _, _ in [:] },
     ]
@@ -92,6 +96,12 @@ extension Vocabulary {
             }
         }
         return [
+            // The general way to write a template inline: `text "Escalated: {title} ({priority})"`. The slot
+            // interpolates, so by the time the handler runs the placeholders are already filled in.
+            .reporter(BuiltIn.text, category: operators, title: "text %template",
+                      inputs: [.longText(BuiltIn.templateInput, interpolates: true)], result: .text) { inputs, _ in
+                .text(inputs.text(BuiltIn.templateInput))
+            },
             comparison("equals", "=") { $0 == .orderedSame },
             comparison("notEquals", "≠") { $0 != .orderedSame },
             comparison("less", "<") { $0 == .orderedAscending },

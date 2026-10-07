@@ -168,6 +168,10 @@ private struct Pass {
             break
 
         case .literal(let value):
+            if slot.interpolates, case .text(let text) = value {
+                // A placeholder is a variable read, and is held to the same standard.
+                for name in Template(text).placeholders { checkRead(of: name, by: block, bound) }
+            }
             switch slot.shape {
             case .boolean:
                 if value.type != .bool { report(block, .error, "“\(slot.label)” needs a condition block") }
@@ -188,11 +192,7 @@ private struct Pass {
             }
 
         case .variable(let name):
-            if variables[name] == nil {
-                report(block, .error, "The variable “\(name)” is never set")
-            } else if !bound.contains(name) {
-                report(block, .error, "The variable “\(name)” is read before it can be set")
-            }
+            checkRead(of: name, by: block, bound)
             let known = variables[name] ?? VariableType()
             checkType(known.type, known.referenceKind, isPredicate: false, in: slot, of: block)
 
@@ -208,6 +208,14 @@ private struct Pass {
                           in: slot, of: block)
             }
             check(reporter, bound)
+        }
+    }
+
+    private mutating func checkRead(of name: String, by block: Block, _ bound: Set<String>) {
+        if variables[name] == nil {
+            report(block, .error, "The variable “\(name)” is never set")
+        } else if !bound.contains(name) {
+            report(block, .error, "The variable “\(name)” is read before it can be set")
         }
     }
 

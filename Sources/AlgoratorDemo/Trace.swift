@@ -16,7 +16,9 @@ func printTraces() throws {
                                (AcceptanceDocument.escalateTicketID, "T-4")] {
         let arguments: [String: Value] = ["ticket": .reference(Reference(kind: "ticket", id: ticket))]
         let result = Interpreter(document: document, vocabulary: vocabulary).run(scriptID: scriptID, arguments: arguments)
-        print("\n\(document.script(id: scriptID)?.name ?? scriptID)(\(ticket)) → \(result.status.rawValue) \(result.outputs)")
+        let outputs = result.outputs.keys.sorted()
+            .map { "\($0) = \(Coercion.toText(result.outputs[$0] ?? .empty, in: RunEnvironment()))" }.joined(separator: ", ")
+        print("\n\(document.script(id: scriptID)?.name ?? scriptID)(\(ticket)) → \(result.status.rawValue)\(outputs.isEmpty ? "" : "  " + outputs)")
         for step in result.trace {
             let indent = String(repeating: "    ", count: step.depth)
             let details = [step.message, step.note].compactMap { $0 }.joined(separator: "; ")

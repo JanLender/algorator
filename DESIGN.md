@@ -176,12 +176,34 @@ Places where the spec was ambiguous, and what was chosen.
 | 119 | `format number` on what is not a number | The empty text — for blank or non-numeric text, dates, lists, maps. A non-numeric `decimals` counts as 0. | Spec §4: invalid input gives empty text. This differs from arithmetic, where a non-number is 0, deliberately: `"0.00"` for "abc" would hide the problem. |
 | 120 | The demo guard in M9 | `if (title is empty) then fail with "The ticket has no title"`, a plain message; ticket `T-4` has no title. The message becomes a template in M10. | Spec §9 puts the guard's exit criterion in M9 and interpolation in M10. |
 
+### M10 — templates and multi-line text (SPEC-templates.md)
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 121 | How `{…}` is scanned | Left to right. `{{` and `}}` are taken first, as literal braces. Otherwise a `{` opens a placeholder only if the next brace after it is a `}`; if another `{` or the end of the text comes first, that `{` is literal and scanning resumes right after it. A `}` on its own is literal. | Total and predictable; `{a {b}` gives `{a ` plus the value of `b`. |
+| 122 | `{ }` with only whitespace inside | Left as written, like `{}`. | The name is trimmed, and an empty name is "an empty `{}`". |
+| 123 | What a name may contain | Anything but braces — inner spaces included (`{ticket 7}`). Names are exact: `{NAME}` is not `{name}`. | Spec §3.1; variable names are free text elsewhere too. |
+| 124 | `{{{name}}}` | `{`, the value, `}`. | Falls out of 121: escapes are consumed pairwise from the left. |
+| 125 | Where rendering happens | In the interpreter's input evaluation, for a `.literal(.text)` in a slot whose definition has `interpolates`. The handler — and the trace label — see the rendered text. Non-text literals are never templates. | One place for statements and reporters alike; hosts get it for free on their own slots. |
+| 126 | The `text` reporter's handler | Returns its slot's value: the slot interpolates, so the work is already done. | No second code path for templates. |
+| 127 | Its id | `operators.text`, as the spec writes it, although the other operators are `operator.…`. | Mindler's converted documents will carry this id. |
+| 128 | An empty rendered `fail` message | Falls back to "The script failed", like an empty literal. | The fallback is about what the user would see, not about what was typed. |
+| 129 | Scope of a template in a called script | The callee's own frame only. | Same as any variable read (spec §3.3). |
+| 130 | Validation of placeholders | Each distinct name in an interpolating text literal goes through the very function that checks a variable chip (`checkRead`), reported on the block holding the literal. Where the slot does not interpolate, braces are not looked at. | "The same finding" by construction. |
+| 131 | `InputDefinition.interpolates` and documents | Slot metadata only; nothing is stored and the schema stays at 2. A document written for a vocabulary whose slot later stops interpolating simply shows its braces. | Spec §3.2. |
+| 132 | `SlotEditor.longText` on the block | The literal shows its first line plus `…` when there is more, then the usual 32-character cut (one ellipsis, not two). The single-line `.text` editor keeps marking breaks with `⏎`. | Spec §5; a template's first line is its best summary. |
+| 133 | The multi-line editor | A popover with a text editor: Return inserts a newline, **Done** (⌘Return) or clicking away commits, **Cancel** or Esc drops the edit. One committed edit is one undo step. | Spec §5, in line with the inline field (67). |
+| 134 | "Editing session API" | `LiteralEdit`: a value holding the slot, the original and the current text, with `committed(to:)`; cancelling is dropping the value. Both the inline field and the popover edit through it. | Commit and cancel are testable without a view, and the two editors cannot disagree. |
+| 135 | The popover's anchor | A separate invisible view laid over the slot, not a second `.popover` on the canvas. | Two popover modifiers on one view do not reliably coexist in SwiftUI. |
+| 136 | The demo | The notification is `text "Escalated: {title} ({priority})"`; the guard says `Ticket {ticket} has no title`. `notify`'s own slot does not interpolate — the `text` block does the work. | Spec §6; shows the general mechanism rather than a host shortcut. |
+
 ## What is verified, and how
 
 | Area | How |
 |---|---|
 | Coercion, compare, dates and times | Table-driven unit tests with a fixed time zone and clock. |
 | Document JSON | Byte-identical round-trip; hand-written JSON; unknown kinds; newer schema rejected; malformed input rejected. |
+| Templates (M10) | **`Template`**: 64 rendering cases (plain text; one, several and adjacent placeholders; trimmed whitespace; names with `_ - .`, digits, spaces and non-ASCII letters; every escape; everything "left as written"; unset; single pass; a value of every type in a fixed zone), parts, placeholders, and every prefix of a brace soup. **Interpreter**: an interpolating slot renders a literal; a non-interpolating one leaves braces alone; a variable or reporter in an interpolating slot is untouched; the `text` reporter; scope (parameters, bindings, `set` and `set entry` targets; a callee sees only its own); values read as they are when the block runs; nested templates are one pass each; `fail` with a template. **Validation**: unknown and not-yet-set placeholders, identical to the finding for a chip; silence for plain text and for non-interpolating slots. **Editor**: the palette lists `text`; a multi-line literal shows its first line (9 cases) and the block stays one row high; chips and reporters still drop into a long-text slot; `LiteralEdit` start, commit, cancel, unchanged commit, vanished block, and one undo step per commit; the changed acceptance script's layout; the build-from-nothing test types the templates and sees the guard refuse `T-4`. **Concurrency**: the 50-task run uses a template; `Examples/Consumer6` clean-builds with 0 warnings. Snapshots of the first script and the Operators palette were looked at. |
 | `fail` and formatting (M9) | `fail`: status, message, trace, outputs; equivalence with a throwing handler; empty-message fallback; a computed message; in a nested region; a failing callee failing its caller, three calls deep; the demo guard refusing ticket `T-4`, directly and through `call script`. Formatting: 17 pattern cases over timestamps, dates and times in a fixed zone; zone dependence of timestamps only; coercion of text and rejection of non-temporal values; 37 `format number` cases including rounding, clamping of decimals and non-numbers. Editor: the palette lists the three blocks; `fail`'s outline has the flat bottom of `return`; the cap rules apply to it; the build-from-nothing test builds the guard. Strict checking and `Examples/Consumer6` are still clean. Snapshots of the first script and the Control palette were looked at. |
 | Strict concurrency (M8) | **Compiler**: a clean build of the package with complete checking reports 0 warnings; `Examples/Consumer6` (Swift 6 language mode) clean-builds with 0 warnings and 0 errors, and runs. **Compile-time test**: 39 public types required to be `Sendable`. **Run time**: one `Interpreter` run from 50 concurrent tasks (a script calling another, handlers adding notes, maps) with every `RunResult` equal to the single-threaded one; 50 concurrent runs against the demo's shared directory with no log line lost or interleaved; 200 notes from concurrent workers all kept; a context kept after its handler returned cannot touch the trace. |
 | Maps (M7) | Each of the nine blocks; reporters leaving their argument untouched; `set entry` / `remove entry` starting from unset, from text and from JSON text; **rebinding leaving copies held elsewhere unchanged**; validation of `set entry` as a binding of type map; the third acceptance script's outputs, trace, notes and log from hand-written JSON; the Maps palette; a layout test and a snapshot of the third script; the build-from-nothing test extended to it; drops onto a map slot (variable, reporter, predicate accepted; statement not; wrong type only warns). |
@@ -199,6 +221,7 @@ Places where the spec was ambiguous, and what was chosen.
 
 **Not verified by any test, replay or walk-through:**
 
+- **the multi-line text popover**: that it opens on a click, that the editor gets focus, that Return inserts a newline, that Done / ⌘Return and clicking away commit, and that Cancel / Esc discard. The logic behind commit and cancel is tested; the view is not;
 - Esc in the inline text field, and committing it by clicking away;
 - the date / time picker, the reference picker's search, the script picker;
 - dragging after the canvas or the palette has been scrolled;
@@ -215,6 +238,11 @@ Places where the spec was ambiguous, and what was chosen.
 
 ## Known limitations
 
+- **Templates substitute only.** No conditions, loops, filters, helpers or escaping modes (HTML, URL, shell); anything smarter is written as blocks, and formatting is done by the two `format` reporters.
+- **Only literals interpolate.** A variable or reporter dropped into a template slot is used as it is; text built elsewhere is never scanned for placeholders.
+- **A placeholder names a variable, nothing more**: no `{a.b}` path into a map, no expressions. (`{a.b}` reads the variable called `a.b`.)
+- **Formatting is in the fixed `en_US_POSIX` locale** (117): month and day names are English, the decimal separator is `.`. Locale-aware formatting is not offered.
+- **`fail` cannot be caught.** There is no try/catch.
 - **No literal map editor.** A map cannot be typed into a slot or edited in a popover; it is built with blocks and passed as a variable or reporter (SPEC-maps §8).
 - **No constructor block with rows.** One entry per block; a block with a "+" to add entries is explicitly not wanted for now.
 - **Map equality ignores entry order** in `compare` and the `=` block, while Swift's `==` on `OrderedMap` does not (82). Two different maps *order* by their JSON text, which is not "smaller first" (86).

@@ -55,6 +55,9 @@ public enum SlotEditor: Hashable, Sendable {
     /// No literal can be typed; the slot takes a variable or a reporter.
     case none
     case text, number, date, time, timestamp, bool
+    /// A text literal edited in a multi-line popover (a template, a script body, a description). On the block
+    /// it is shown truncated to its first line.
+    case longText
     case dropdown([String])
     /// The host's `ReferenceProvider` picker.
     case reference
@@ -77,9 +80,16 @@ public struct InputDefinition: Hashable, Sendable {
     public var editor: SlotEditor
     /// Whether leaving the slot empty is a validation error.
     public var isRequired: Bool
+    /// Whether a **text literal** in the slot is a template: its `{name}` placeholders are replaced by the
+    /// script's variables each time the block is evaluated (see `Template`). A variable or a reporter in the
+    /// slot is never interpolated — its value is already computed.
+    ///
+    /// Opt-in, because many text literals legitimately contain braces (a script, JSON, a regex). It is slot
+    /// metadata, like `editor`: nothing about it is stored in documents.
+    public var interpolates: Bool
 
     public init(name: String, label: String? = nil, shape: SlotShape = .value, types: [ValueType] = [],
-                defaultValue: Value? = nil, editor: SlotEditor = .text, isRequired: Bool = true) {
+                defaultValue: Value? = nil, editor: SlotEditor = .text, isRequired: Bool = true, interpolates: Bool = false) {
         self.name = name
         self.label = label ?? name
         self.shape = shape
@@ -87,12 +97,23 @@ public struct InputDefinition: Hashable, Sendable {
         self.defaultValue = defaultValue
         self.editor = editor
         self.isRequired = isRequired
+        self.interpolates = interpolates
     }
 
     /// A round slot. Without a type it accepts anything and is edited as text.
-    public static func value(_ name: String, _ type: ValueType? = nil, default defaultValue: Value? = nil) -> InputDefinition {
-        guard let type else { return InputDefinition(name: name, defaultValue: defaultValue ?? .text("")) }
-        return InputDefinition(name: name, type: type, referenceKind: nil, defaultValue: defaultValue)
+    /// - Parameter interpolates: treat a text literal in it as a template (`"Hello {name}"`).
+    public static func value(_ name: String, _ type: ValueType? = nil, default defaultValue: Value? = nil,
+                             interpolates: Bool = false) -> InputDefinition {
+        var slot = type.map { InputDefinition(name: name, type: $0, referenceKind: nil, defaultValue: defaultValue) }
+            ?? InputDefinition(name: name, defaultValue: defaultValue ?? .text(""))
+        slot.interpolates = interpolates
+        return slot
+    }
+
+    /// A text slot edited in a multi-line popover; shown on the block truncated to its first line.
+    /// - Parameter interpolates: treat the literal as a template (`"Hello {name}"`).
+    public static func longText(_ name: String, default defaultValue: String = "", interpolates: Bool = false) -> InputDefinition {
+        InputDefinition(name: name, types: [.text], defaultValue: .text(defaultValue), editor: .longText, interpolates: interpolates)
     }
 
     /// A hexagonal slot taking a predicate.

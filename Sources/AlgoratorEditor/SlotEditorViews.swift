@@ -1,10 +1,45 @@
 import SwiftUI
 import AlgoratorCore
 
-/// A literal being typed in place.
+/// A literal being typed in place, over its slot.
 struct InlineEdit: Equatable {
     var slot: SlotLayout
-    var text: String
+    var edit: LiteralEdit
+}
+
+/// A multi-line literal being edited in a popover that points at its slot.
+struct LongTextRequest: Equatable {
+    var edit: LiteralEdit
+    /// The slot's frame, in canvas coordinates.
+    var frame: CGRect
+}
+
+/// The multi-line editor: Return inserts a newline, Done (or clicking away) commits, Esc cancels.
+@MainActor
+struct LongTextPopover: View {
+    @Binding var text: String
+    var commit: () -> Void
+    var cancel: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            TextEditor(text: $text)
+                .font(.system(size: 12, design: .monospaced))
+                .frame(minWidth: 380, minHeight: 150)
+                .focused($focused)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(.separator))
+            HStack {
+                Text("{name} inserts a variable where the slot is a template").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
+                Button("Done", action: commit).keyboardShortcut(.return, modifiers: .command)
+            }
+        }
+        .padding(10)
+        .onExitCommand(perform: cancel)
+        .onAppear { focused = true }
+    }
 }
 
 /// The text field laid over a slot while its literal is typed.

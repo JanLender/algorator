@@ -266,6 +266,9 @@ private final class Run {
     private func evaluate(_ input: Input, _ definition: InputDefinition, _ frame: Frame) throws -> Value {
         switch input {
         case .empty: return definition.defaultValue ?? (definition.shape == .boolean ? .bool(false) : .empty)
+        case .literal(.text(let text)) where definition.interpolates:
+            // Only literals are templates; a variable or a reporter below is used as it is.
+            return .text(Template(text).render(frame.variables, in: environment))
         case .literal(let value): return value
         case .variable(let name): return frame.variables[name] ?? .empty
         case .reporter(let block): return try report(block, frame)

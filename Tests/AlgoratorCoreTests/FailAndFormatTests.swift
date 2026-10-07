@@ -19,6 +19,8 @@ final class FailTests: XCTestCase {
         XCTAssertEqual(definition?.inputs.map(\.name), ["message"])
         XCTAssertEqual(definition?.inputs.first?.types, [.text])
         XCTAssertEqual(definition?.inputs.first?.defaultValue, "")
+        XCTAssertEqual(definition?.inputs.first?.editor, .longText)
+        XCTAssertEqual(definition?.inputs.first?.interpolates, true)
     }
 
     func testFailEndsTheRunAsFailedWithItsMessage() {
@@ -116,9 +118,9 @@ final class FailTests: XCTestCase {
                                       environment: env)
         let refused = interpreter.run(scriptID: AcceptanceDocument.escalateTicketID, arguments: ["ticket": ref("ticket", "T-4")])
         XCTAssertEqual(refused.status, .failed)
-        XCTAssertEqual(refused.message, "The ticket has no title")
+        XCTAssertEqual(refused.message, "Ticket T-4 has no title", "the message is a template")
         XCTAssertEqual(refused.trace.map(\.blockID), ["fetch", "guard", "refuse"])
-        XCTAssertEqual(refused.trace.map(\.label), ["fetch ticket T-4", "if true then", "fail with The ticket has no title"])
+        XCTAssertEqual(refused.trace.map(\.label), ["fetch ticket T-4", "if true then", "fail with Ticket T-4 has no title"])
         XCTAssertEqual(refused.trace.map(\.succeeded), [true, true, false])
         XCTAssertEqual(refused.outputs, ["escalated": .empty])
         XCTAssertEqual(directory.notifications, [])

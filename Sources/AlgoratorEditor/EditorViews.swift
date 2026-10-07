@@ -72,6 +72,7 @@ public struct AlgoratorEditorView: View {
     @State private var paletteFrame = CGRect.zero
 
     @State private var inline: InlineEdit?
+    @State private var longText: LongTextRequest?
     @State private var picker: PickerRequest?
     @State private var showingSettings = false
     /// The pointer over the canvas, in canvas coordinates.
@@ -199,6 +200,7 @@ public struct AlgoratorEditorView: View {
         return ScriptCanvasView(tree: drag?.tree ?? engine.layout(script), renderer: renderer, indicator: drag?.indicator)
             .background(frameReader { canvasOrigin = $0.origin })
             .overlay(alignment: .topLeading) { inlineField(script) }
+            .overlay(alignment: .topLeading) { longTextAnchor(script) }
             .popover(item: $picker, attachmentAnchor: .rect(.rect(picker?.frame ?? .zero)), arrowEdge: .bottom) { request in
                 PickerPopover(request: request, script: script, document: document, references: references) { input in
                     choose(input, for: request, in: script)
@@ -334,7 +336,10 @@ public struct AlgoratorEditorView: View {
         case .none:
             break
         case .text, .number:
-            inline = InlineEdit(slot: slot, text: SlotEditing.text(of: input))
+            inline = InlineEdit(slot: slot, edit: LiteralEdit(blockID: slot.blockID, slot: slot.name, editor: slot.editor, in: script))
+        case .longText:
+            longText = LongTextRequest(edit: LiteralEdit(blockID: slot.blockID, slot: slot.name, editor: slot.editor, in: script),
+                                       frame: slot.frame)
         case .bool:
             apply(script.settingInput(blockID: slot.blockID, name: slot.name, to: SlotEditing.toggled(input)), "Change Value")
         case .date, .time, .timestamp:
@@ -362,7 +367,7 @@ public struct AlgoratorEditorView: View {
 
     @ViewBuilder private func inlineField(_ script: Script) -> some View {
         if let editing = inline {
-            InlineField(text: Binding(get: { inline?.text ?? "" }, set: { inline?.text = $0 }),
+            InlineField(text: Binding(get: { inline?.edit.text ?? "" }, set: { inline?.edit.text = $0 }),
                         width: max(editing.slot.frame.width + 24, 90), height: editing.slot.frame.height,
                         fontSize: metrics.fontSize,
                         commit: { commitInline(in: script) }, cancel: { inline = nil })
@@ -374,8 +379,30 @@ public struct AlgoratorEditorView: View {
     private func commitInline(in script: Script) {
         guard let editing = inline else { return }
         inline = nil
-        apply(script.settingInput(blockID: editing.slot.blockID, name: editing.slot.name,
-                                  to: SlotEditing.input(fromText: editing.text, editor: editing.slot.editor)), "Change Value")
+        apply(editing.edit.committed(to: script), "Change Value")
+    }
+
+    /// An invisible view over the slot being edited, for the multi-line popover to point at. Dismissing the
+    /// popover by clicking away commits (the binding's setter); Esc and Cancel drop the edit first.
+    private func longTextAnchor(_ script: Script) -> some View {
+        let frame = longText?.frame ?? .zero
+        return Color.clear
+            .frame(width: max(frame.width, 1), height: max(frame.height, 1))
+            .padding(.leading, frame.minX)
+            .padding(.top, frame.minY)
+            .allowsHitTesting(false)
+            .popover(isPresented: Binding(get: { longText != nil }, set: { if !$0 { commitLongText(in: script) } }),
+                     attachmentAnchor: .rect(.rect(CGRect(x: frame.minX, y: frame.minY, width: max(frame.width, 1), height: max(frame.height, 1)))),
+                     arrowEdge: .bottom) {
+                LongTextPopover(text: Binding(get: { longText?.edit.text ?? "" }, set: { longText?.edit.text = $0 }),
+                                commit: { commitLongText(in: script) }, cancel: { longText = nil })
+            }
+    }
+
+    private func commitLongText(in script: Script) {
+        guard let editing = longText else { return }
+        longText = nil
+        apply(editing.edit.committed(to: script), "Change Text")
     }
 
     // MARK: Chrome

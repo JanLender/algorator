@@ -4,7 +4,8 @@ A reusable, Scratch-style block editor and interpreter for Swift apps. Proof of 
 for the requirements and [DESIGN.md](DESIGN.md) for the decisions taken.
 
 A host app registers its own **blocks** (with native handler closures) in a **vocabulary**. Users snap those
-blocks, plus a small built-in set (`if`, `return`, `call script`, variables, operators, time, lists), into
+blocks, plus a small built-in set (`if`, `return`, `fail`, `call script`, variables, operators, text templates,
+time and number formatting, lists, maps), into
 named **scripts**. The library validates, runs, lays out, draws and edits them.
 
 | Product | Contains | Imports |
@@ -144,6 +145,45 @@ build without a single warning:
 ```bash
 cd Examples/Consumer6 && swift build && swift run Consumer6
 ```
+
+## Templates and formatting
+
+A **template** is a text with `{name}` placeholders that are replaced by the script's variables when the block
+runs. It only substitutes values — conditions and loops are blocks, formatting is done by reporters.
+
+| In a template | Gives |
+|---|---|
+| `{name}` | the text of the variable `name` (empty if it is not set); spaces around the name are ignored |
+| `{{` and `}}` | a literal `{` and `}` |
+| `{}`, a `{` without `}`, a stray `}` | themselves, as written — a template never fails |
+
+Substitution is a single pass: braces inside a substituted value are not expanded again.
+
+Interpolation is **opt-in per slot**, because plenty of text legitimately contains braces (a script, JSON, a
+regex) and must stay untouched. Only a **text literal** in such a slot is a template; a variable or a reporter
+dropped into it is used as it is. A host marks its own slots:
+
+```swift
+.statement("note.create", category: notes, title: "create note %title with %body",
+           inputs: [.value("title", .text, interpolates: true),          // "{code} {name}"
+                    .longText("body", interpolates: true)]) { inputs, _ in    // edited in a multi-line popover
+    try notes.create(title: inputs.text("title"), body: inputs.text("body"))  // already filled in
+    return [:]
+}
+```
+
+Built in:
+
+| Block | Gives |
+|---|---|
+| `text (template)` (Operators) | the rendered template — the general way to write one inline, in any slot |
+| `fail with (message)` (Control) | ends the whole run as failed with the message (a template); nothing may follow it, and a failing script fails its caller |
+| `format (value) as (pattern)` (Time) | a date, time or timestamp as text, by a Unicode pattern: `yyyy-MM-dd`, `HH:mm`, `d. M. yyyy` |
+| `format number (number) with (n) decimals` (Operators) | fixed-point text: `.` as the separator, no grouping, 0–10 decimals |
+
+Formatting always uses the `en_US_POSIX` locale, so the result does not depend on the machine. A timestamp is
+shown in the run's time zone. Validation reports a placeholder naming a variable that cannot be set yet
+exactly as it reports such a variable chip.
 
 ## Maps
 

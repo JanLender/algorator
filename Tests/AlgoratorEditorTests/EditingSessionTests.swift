@@ -296,13 +296,15 @@ final class EditingSessionTests: XCTestCase {
             let slot = try XCTUnwrap(vocabulary.signature(of: owner, in: script, document: document)?.input(name))
             XCTAssertTrue(item.fits(shape: slot.shape, editor: slot.editor), "\(item.payload) does not fit \(blockID).\(name)")
         }
+        /// Typing into a slot: the inline field, or the multi-line popover for a long-text slot.
         func type(_ text: String, into block: String, _ slot: String, of index: Int) throws {
             let script = document.scripts[index]
             let owner = try XCTUnwrap(script.block(id: block))
             let editor = try XCTUnwrap(vocabulary.signature(of: owner, in: script, document: document)?.input(slot)).editor
-            XCTAssertTrue(editor == .text || editor == .number, "\(block).\(slot) is not typeable")
-            document = document.replacing(try XCTUnwrap(script.settingInput(blockID: block, name: slot,
-                                                                            to: SlotEditing.input(fromText: text, editor: editor))))
+            XCTAssertTrue(editor == .text || editor == .number || editor == .longText, "\(block).\(slot) is not typeable")
+            var edit = LiteralEdit(blockID: block, slot: slot, editor: editor, in: script)
+            edit.text = text
+            document = document.replacing(try XCTUnwrap(edit.committed(to: script)))
         }
         func body(_ index: Int) -> DropTarget { .region(owner: nil, name: "body", index: index) }
         func slot(_ block: String, _ name: String) -> DropTarget { .slot(blockID: block, name: name) }
@@ -314,7 +316,7 @@ final class EditingSessionTests: XCTestCase {
         let noTitle = try drop("operator.isEmpty", at: slot(guardBlock, "condition"), into: 0)
         try chip("title", into: noTitle, "value", of: 0)
         let refuse = try drop(BuiltIn.fail, at: .region(owner: guardBlock, name: "then", index: 0), into: 0)
-        try type("The ticket has no title", into: refuse, "message", of: 0)
+        try type("Ticket {ticket} has no title", into: refuse, "message", of: 0)
         let decide = try drop(BuiltIn.ifElse, at: body(2), into: 0)
         let or = try drop("operator.or", at: slot(decide, "condition"), into: 0)
         let isHigh = try drop("operator.equals", at: slot(or, "a"), into: 0)
@@ -327,9 +329,8 @@ final class EditingSessionTests: XCTestCase {
         _ = try drop("time.now", at: slot(isOld, "b"), into: 0)
         let notify = try drop("ticket.notify", at: .region(owner: decide, name: "then", index: 0), into: 0)
         try chip("assignee", into: notify, "user", of: 0)
-        let join = try drop("operator.join", at: slot(notify, "message"), into: 0)
-        try type("Escalated: ", into: join, "a", of: 0)
-        try chip("title", into: join, "b", of: 0)
+        let message = try drop(BuiltIn.text, at: slot(notify, "message"), into: 0)
+        try type("Escalated: {title} ({priority})", into: message, "template", of: 0)
         let label = try drop("ticket.addLabel", at: .region(owner: decide, name: "then", index: 1), into: 0)
         try type("escalated", into: label, "label", of: 0)
         try chip("ticket", into: label, "ticket", of: 0)
@@ -381,6 +382,12 @@ final class EditingSessionTests: XCTestCase {
         // It validates, and behaves exactly like the hand-written document.
         XCTAssertEqual(Validator.validate(document, vocabulary: vocabulary), [])
         let environment = RunEnvironment(timeZone: utc, now: { Date(timeIntervalSince1970: 1_791_108_000) })
+        // The guard refuses the ticket without a title, with the templated message.
+        let refused = Interpreter(document: document, vocabulary: vocabulary, environment: environment)
+            .run(scriptID: "escalate-ticket", arguments: ["ticket": .reference(Reference(kind: "ticket", id: "T-4"))])
+        XCTAssertEqual(refused.status, .failed)
+        XCTAssertEqual(refused.message, "Ticket T-4 has no title")
+
         for ticket in ["T-1", "T-2", "T-3"] {
             let arguments: [String: Value] = ["ticket": .reference(Reference(kind: "ticket", id: ticket))]
             let built = Interpreter(document: document, vocabulary: vocabulary, environment: environment)

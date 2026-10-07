@@ -85,7 +85,8 @@ final class ConcurrencyTests: XCTestCase {
             ifElse("branch", rep("operator.greater", ["a": rep("map.value", ["key": lit("square"), "map": variable("facts")]), "b": lit(50)]),
                    then: [set("big", "size", rep("c.tag", ["text": lit("big")]))],
                    else: [set("small", "size", rep("c.tag", ["text": lit("small")]))]),
-            ret("return", ["summary": rep("operator.join", ["a": variable("size"), "b": variable("n")]), "facts": variable("facts")]),
+            // A template: read from this run's own variables on whatever thread it runs on.
+            ret("return", ["summary": rep(BuiltIn.text, ["template": lit("{size}{ n }")]), "facts": variable("facts")]),
         ])
         return Document(scripts: [main, helper])
     }()

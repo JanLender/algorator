@@ -294,6 +294,10 @@ public struct LayoutEngine: Sendable {
         default:
             text = Coercion.toText(value, in: environment)
         }
+        if definition.editor == .longText, let lineEnd = text.firstIndex(where: \.isNewline) {
+            // A multi-line literal shows its first line; the rest is in the popover (and in the document).
+            text = String(text[..<lineEnd]) + "…"
+        }
         text = text.replacingOccurrences(of: "\n", with: "⏎")
         return text.count > metrics.maxLiteralCharacters ? text.prefix(metrics.maxLiteralCharacters - 1) + "…" : text
     }

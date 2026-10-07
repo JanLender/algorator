@@ -57,6 +57,40 @@ public enum SlotEditing {
     }
 }
 
+/// One text literal being edited, inline or in the multi-line popover: what the editor's text editors work on.
+/// A value with two ways out — `committed(to:)` or simply dropping it (cancel) — so the behaviour is testable
+/// without a view.
+public struct LiteralEdit: Equatable, Sendable, Identifiable {
+    public let blockID: String
+    public let slot: String
+    public let editor: SlotEditor
+    /// The text when editing began.
+    public let original: String
+    /// The text as edited so far.
+    public var text: String
+
+    public var id: String { blockID + "\u{0}" + slot }
+
+    /// Starts editing the literal a slot holds now (an empty text if it holds none).
+    public init(blockID: String, slot: String, editor: SlotEditor, in script: Script, timeZone: TimeZone = .current) {
+        self.blockID = blockID
+        self.slot = slot
+        self.editor = editor
+        original = SlotEditing.text(of: script.block(id: blockID)?.inputs[slot], timeZone: timeZone)
+        text = original
+    }
+
+    /// Whether Return inserts a newline (the popover editor) rather than committing (the inline field).
+    public var isMultiline: Bool { editor == .longText }
+
+    /// The script with the edited text stored; `nil` when the block no longer exists. Committing an unchanged
+    /// text gives a script equal to the one passed in, which the editor does not record as an undo step.
+    /// To cancel, drop the edit instead.
+    public func committed(to script: Script) -> Script? {
+        script.settingInput(blockID: blockID, name: slot, to: SlotEditing.input(fromText: text, editor: editor))
+    }
+}
+
 /// Applies document edits and registers their undo with an `UndoManager`, so ⌘Z, ⇧⌘Z and the Edit menu
 /// work the way they do everywhere else on the Mac. Main-actor, like the undo manager it talks to.
 @MainActor

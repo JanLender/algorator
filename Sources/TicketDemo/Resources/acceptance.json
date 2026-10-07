@@ -25,7 +25,7 @@
           },
           "regions": {
             "then": [
-              { "id": "refuse", "kind": "control.fail", "inputs": { "message": { "literal": { "text": "The ticket has no title" } } } }
+              { "id": "refuse", "kind": "control.fail", "inputs": { "message": { "literal": { "text": "Ticket {ticket} has no title" } } } }
             ]
           }
         },
@@ -66,8 +66,8 @@
                   "user": { "variable": "assignee" },
                   "message": { "reporter": {
                     "id": "message",
-                    "kind": "operator.join",
-                    "inputs": { "a": { "literal": { "text": "Escalated: " } }, "b": { "variable": "title" } }
+                    "kind": "operators.text",
+                    "inputs": { "template": { "literal": { "text": "Escalated: {title} ({priority})" } } }
                   } }
                 }
               },

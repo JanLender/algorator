@@ -275,12 +275,12 @@ final class InterpreterTests: XCTestCase {
         XCTAssertEqual(result.outputs, ["escalated": true])
         XCTAssertEqual(result.trace.map(\.blockID), ["fetch", "guard", "decide", "notify-assignee", "label", "return-true"])
         XCTAssertEqual(result.trace.map(\.label), [
-            "fetch ticket T-1", "if false then", "if true then", "notify alice message Escalated: Login page is down",
+            "fetch ticket T-1", "if false then", "if true then", "notify alice message Escalated: Login page is down (high)",
             "add label escalated to T-1", "return escalated true",
         ])
         XCTAssertTrue(result.trace.allSatisfy(\.succeeded))
         XCTAssertEqual(result.trace[3].note, "Sent to Alice")
-        XCTAssertEqual(directory.notifications, [.init(user: "alice", message: "Escalated: Login page is down")])
+        XCTAssertEqual(directory.notifications, [.init(user: "alice", message: "Escalated: Login page is down (high)")])
         XCTAssertEqual(directory.tickets["T-1"]?.labels, ["escalated"])
     }
 
@@ -315,7 +315,7 @@ final class InterpreterTests: XCTestCase {
                                                        "return-true", "branch", "tell-ops"])
         XCTAssertEqual(escalated.trace.map(\.depth), [0, 1, 1, 1, 1, 1, 1, 0, 0])
         XCTAssertEqual(escalated.trace[0].label, "call Escalate ticket ticket T-1")
-        XCTAssertEqual(first.notifications.map(\.message), ["Escalated: Login page is down", "A ticket was escalated"])
+        XCTAssertEqual(first.notifications.map(\.message), ["Escalated: Login page is down (high)", "A ticket was escalated"])
 
         let (clear, second) = try acceptance(AcceptanceDocument.allClearID, ticket: "T-3")
         XCTAssertEqual(clear.trace.map(\.blockID), ["call-escalate", "fetch", "guard", "decide", "return-false", "branch", "all-clear"])
